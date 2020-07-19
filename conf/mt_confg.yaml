@@ -1,39 +1,75 @@
+# python mt_launch.py rlbench.tasks='${4_task_A}' rlbench.eval_tasks='${4_task_A}' run_name=Batch64-Voxel16x16
+# python mt_launch.py rlbench.tasks='${4_task_A}' rlbench.eval_tasks='${4_task_A}' run_name=-Batch64-Voxel16x16x16 C2FARM.voxel_sizes=[16,16,16]
+4_task_A:   [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin]
+4_task_B:   [reach_target,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
+8_tasks:    [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,reach_target,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
+run_name:   ''
 rlbench:
-    tasks: [take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
-
-    demos: 10
-    demo_path: /home/mandi/ARM/data
-    episode_length: 10
-    cameras: [front]
-    camera_resolution: [128, 128]
-    scene_bounds: [-0.3, -0.5, 0.6, 0.7, 0.5, 1.6]
+    tasks:                  [take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
+    eval_tasks:             [take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand] # doesn't necessarily equal train tasks
+    demos:                  10
+    demo_path:              '/home/mandi/ARM/data'
+    episode_length:         10
+    cameras:                [front]
+    camera_resolution:      [128, 128]
+    scene_bounds:           [-0.3, -0.5, 0.6, 0.7, 0.5, 1.6]
     single_env_cfg:
         # below are shared across tasks:
-        episode_length: ${rlbench.episode_length}
-        dataset_root: ${rlbench.demo_path}
-        headless: True 
-        state_includes_remaining_time: False
+        episode_length:     ${rlbench.episode_length}
+        dataset_root:       ${rlbench.demo_path} 
+        channels_last:      False 
+        reward_scale:       100.0
+        headless:           True
+        state_includes_remaining_time: True
+        include_previous_action:       False 
+        sample_method:      'uniform'
 
 replay:
-    batch_size: 128
-    timesteps: 1
-    prioritisation: True
-    use_disk: False
-    path: '/home/mandi/ARM/replay'  # Only used when use_disk is True.
+    batch_size:             64 # 128 might be too big
+    timesteps:              1    
+    prioritisation:         True
+    use_disk:               False
+    path:                   '/home/mandi/ARM/replay'  # Only used when use_disk is True.
+    replay_size:            100000
+    num_demos:              ${rlbench.demos}
+    # add some C2FARM-specifics 
+    demo_augmentation:      ${method.demo_augmentation}
+    demo_augmentation_every_n: ${method.demo_augmentation_every_n}
+    rlbench_scene_bounds:   ${rlbench.scene_bounds}
+    voxel_sizes:            ${method.voxel_sizes}
+    bounds_offset:          ${method.bounds_offset}
+    rotation_resolution:    ${method.rotation_resolution}
+    crop_augmentation:      ${method.crop_augmentation}
+    
 
 framework:
-    log_freq: 100
-    train_envs: 1
-    eval_envs: 1
-    replay_ratio: 128
+    log_freq: 500
+    n_train: 2
+    n_eval: 2
+    replay_ratio: 64 #128
     transitions_before_train: 200
     tensorboard_logging: False
     csv_logging: True
-    training_iterations: 40000
+    training_iterations: 100000
     gpu: 0
     logdir: '/home/mandi/ARM/log/'
     seeds: 1
+    replay_sample_rates: [1.0]
 
+env_runner:
+    n_train:    ${framework.n_train}
+    n_eval:     ${framework.n_eval}
+    episodes:   99999
+    episode_length: ${rlbench.episode_length}
+    max_fails:  5
+
+trainer:
+    task_per_batch: 3
+    iterations: ${framework.training_iterations}
+    logdir:     ${framework.log_dir}
+    log_freq:   ${framework.log_freq}
+    
+    
 defaults:
     - method: C2FARM
 

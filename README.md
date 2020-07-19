@@ -13,7 +13,7 @@ Not that C2F-ARM is the better performing system.
 
 ## Installation (on RLL servers)
 ```
-conda create -n arm python=3.7 
+conda create -n arm python=3.7 torch==1.8.1
 conda activate arm 
 # If starting from scratch: 
 # 1. install CoppeliaSim: 
@@ -59,7 +59,7 @@ pip install ARM/.
 # (Mandi) Added data/ and log/ folder, changed default settings in yaml
 cp -r -n /shared/mandi/rlbench_demo/*  ARM/data/
 # test launch
-python launch.py method=C2FARM rlbench.task=take_lid_off_saucepah  framework.gpu=0
+python launch.py method=C2FARM rlbench.task=stack_wine framework.gpu=0
 
 
 ```
@@ -70,6 +70,9 @@ Not 100% needed for install, save for later:
 sudo apt install mesa-utils
 # disable QT warning
 export QT_LOGGING_RULES='*.debug=false;qt.qpa.*=false'
+# clean up nvidia-smi
+sudo fuser -v /dev/nvidia*
+# then sudo kill -9 
 ```
 
 ARM is trained using the **YARR framework**. Head to the [YARR github](https://github.com/stepjam/YARR) page and follow 
@@ -85,8 +88,7 @@ pip install -r requirements.txt
 
 ```
 # Data gen:
-python ../RLBench/tools/dataset_generator.py --save_path=/home/mandi/ARM/data/ --tasks=take_lid_off_saucepan --image_size=128,128 \
---renderer=opengl --episodes_per_task=10 --variations=1 --processes=1
+python ../RLBench/tools/dataset_generator.py --save_path=/home/mandi/ARM/data/ --tasks=take_lid_off_saucepan --image_size=128,128 --renderer=opengl --episodes_per_task=10 --variations=5 --processes=5
 
 
 #train

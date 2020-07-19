@@ -1,6 +1,7 @@
 import logging
 from typing import List
-
+import copy 
+from copy import deepcopy
 import numpy as np
 from omegaconf import DictConfig
 from rlbench.backend.observation import Observation
@@ -12,12 +13,13 @@ from yarr.replay_buffer.replay_buffer import ReplayElement, ReplayBuffer
 from yarr.replay_buffer.uniform_replay_buffer import UniformReplayBuffer
 
 from arm import demo_loading_utils, utils
-from arm.custom_rlbench_env import CustomRLBenchEnv
+from arm.custom_rlbench_env import CustomRLBenchEnv, MultiTaskRLBenchEnv
 from arm.preprocess_agent import PreprocessAgent
 from arm.c2farm.networks import Qattention3DNet
 from arm.c2farm.qattention_agent import QAttentionAgent
 from arm.c2farm.qattention_stack_agent import QAttentionStackAgent
 
+from collections import OrderedDict
 REWARD_SCALE = 100.0
 
 
@@ -66,7 +68,6 @@ def create_replay(batch_size: int, timesteps: int, prioritisation: bool,
     )
     return replay_buffer
 
-
 def _get_action(
         obs_tp1: Observation,
         rlbench_scene_bounds: List[float],   # AKA: DEPTH0_BOUNDS
@@ -101,7 +102,6 @@ def _get_action(
     rot_and_grip_indicies.extend([int(obs_tp1.gripper_open)])
     return trans_indicies, rot_and_grip_indicies, np.concatenate(
         [obs_tp1.gripper_pose, np.array([grip])]), attention_coordinates
-
 
 def _add_keypoints_to_replay(
         replay: ReplayBuffer,
@@ -157,7 +157,6 @@ def _add_keypoints_to_replay(
     obs_dict_tp1.update(final_obs)
     replay.add_final(**obs_dict_tp1)
 
-
 def fill_replay(replay: ReplayBuffer,
                 task: str,
                 env: CustomRLBenchEnv,
@@ -171,7 +170,7 @@ def fill_replay(replay: ReplayBuffer,
                 rotation_resolution: int,
                 crop_augmentation: bool):
 
-    logging.info('Filling replay with demos...')
+    logging.info(f'Filling replay for task {task} with {num_demos} demos...')
     for d_idx in range(num_demos):
         demo = env.env.get_demos(
             task, 1, variation_number=0, random_selection=False,
@@ -193,8 +192,63 @@ def fill_replay(replay: ReplayBuffer,
                 replay, obs, demo, env, episode_keypoints, cameras,
                 rlbench_scene_bounds, voxel_sizes, bounds_offset,
                 rotation_resolution, crop_augmentation)
-    logging.info('Replay filled with demos.')
+    logging.info('Replay filled.')
 
+def create_and_fill_replays(
+    cameras: list, 
+    env: MultiTaskRLBenchEnv, # should already contain task names for train and eval
+    save_dir: str, 
+    batch_size: int, 
+    timesteps: int, 
+    prioritisation: bool,
+    use_disk: bool,
+    path: str,
+    replay_size: int, # 1e5
+    num_demos: int,
+    demo_augmentation: bool,
+    demo_augmentation_every_n: int,
+    rlbench_scene_bounds: List[float],  # AKA: DEPTH0_BOUNDS
+    voxel_sizes: List[int],
+    bounds_offset: List[float],
+    rotation_resolution: int,
+    crop_augmentation: bool
+    ):
+    """ Merge the create and fill methods above and return an ordereddict of task->replays """
+    replays = OrderedDict()
+    sub_batch_size = int(batch_size / env.n_train_tasks)
+    for task_name, task_class in env.unique_tasks.items():
+        replay = create_replay(sub_batch_size, timesteps, prioritisation,
+                  save_dir, cameras, env, voxel_sizes, replay_size)
+        # set a task first before filling the replay
+        logging.info(f'Filling replay for task **{task_name}** with {num_demos} demos...')
+        for d_idx in range(num_demos):
+            one_env = deepcopy(env)
+            one_env._task_class = task_class
+            demo = one_env.env.get_demos(
+                task_name, 1, variation_number=0, random_selection=False,
+                from_episode_number=d_idx)[0]
+            episode_keypoints = demo_loading_utils.keypoint_discovery(demo)
+ 
+            for i in range(len(demo) - 1):
+                if not demo_augmentation and i > 0:
+                    break
+                if i % demo_augmentation_every_n != 0:
+                    continue
+                obs = demo[i]
+                # If our starting point is past one of the keypoints, then remove it
+                while len(episode_keypoints) > 0 and i >= episode_keypoints[0]:
+                    episode_keypoints = episode_keypoints[1:]
+                if len(episode_keypoints) == 0:
+                    break
+                _add_keypoints_to_replay(
+                    replay, obs, demo, env, episode_keypoints, cameras,
+                    rlbench_scene_bounds, voxel_sizes, bounds_offset,
+                    rotation_resolution, crop_augmentation)
+        replays[task_name] = replay
+        logging.info('Replay filled.')
+        
+         
+    return replays
 
 def create_agent(cfg: DictConfig, env, depth_0bounds=None, cam_resolution=None):
     VOXEL_FEATS = 3

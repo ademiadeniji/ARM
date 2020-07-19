@@ -11,5 +11,6 @@ rlight.egg-info
 
 log/
 data/
+wandb/
 replay/
 nohup.out
