@@ -1,18 +1,25 @@
 rlbench:
-    task: take_lid_off_saucepan
+    tasks: [take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
+
     demos: 10
     demo_path: /home/mandi/ARM/data
     episode_length: 10
     cameras: [front]
     camera_resolution: [128, 128]
     scene_bounds: [-0.3, -0.5, 0.6, 0.7, 0.5, 1.6]
+    single_env_cfg:
+        # below are shared across tasks:
+        episode_length: ${rlbench.episode_length}
+        dataset_root: ${rlbench.demo_path}
+        headless: True 
+        state_includes_remaining_time: False
 
 replay:
     batch_size: 128
     timesteps: 1
     prioritisation: True
     use_disk: False
-    path: '/tmp/arm/replay'  # Only used when use_disk is True.
+    path: '/home/mandi/ARM/replay'  # Only used when use_disk is True.
 
 framework:
     log_freq: 100
@@ -30,6 +37,8 @@ framework:
 defaults:
     - method: C2FARM
 
+log_path: ??? 
+short_names: ???
 hydra:
     run:
-        dir: ${framework.logdir}/${rlbench.task}/${method.name}
+        dir: ${framework.logdir}/ #${rlbench.task}/${method.name}

@@ -8,3 +8,8 @@ venv
 nvidia-persistenced/
 results/
 rlight.egg-info
+
+log/
+data/
+replay/
+nohup.out

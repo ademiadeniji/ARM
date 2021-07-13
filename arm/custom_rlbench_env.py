@@ -8,6 +8,7 @@ from rlbench import ObservationConfig, CameraConfig
 from rlbench.action_modes import ActionMode
 from rlbench.backend.observation import Observation
 from rlbench.backend.task import Task
+from rlbench.backend.utils import task_file_to_task_class
 from rlbench.task_environment import InvalidActionError
 
 from yarr.agents.agent import ActResult, VideoSummary
@@ -15,6 +16,9 @@ from yarr.envs.rlbench_env import RLBenchEnv
 from yarr.utils.observation_type import ObservationElement
 from yarr.utils.transition import Transition
 
+from collections import OrderedDict
+from copy import deepcopy
+from hydra.utils import instantiate
 RECORD_EVERY = 20
 
 
@@ -230,3 +234,17 @@ class CustomRLBenchEnv(RLBenchEnv):
         d, = self._task.get_demos(
             1, live_demos=False, random_selection=False, from_episode_number=i)
         self._task.reset_to_demo(d)
+
+class MultiRLBenchEnv:
+    """Stores a list of envs with different tasks"""
+    def __init__(self, tasks, obs_config, action_mode, single_env_cfg):
+        self.env_list = OrderedDict()
+        for task in tasks:
+            env_cfg = deepcopy(single_env_cfg)
+            self.env_list[task] = CustomRLBenchEnv(
+                observation_config=obs_config,
+                action_mode=action_mode,
+                task_class=task_file_to_task_class(task),
+                **env_cfg)
+            print(f"Created Env for task {task}")
+    
