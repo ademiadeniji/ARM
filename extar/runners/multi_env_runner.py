@@ -1,4 +1,5 @@
 """
+New(0721) try adding GPU agents
 NOTE(0714) My attempt at making a simpler version of a multi-task trainer that 
 handles EnvRunner, ReplayBuffer, and the Agent Update with a slightly more
 flattened logic.
@@ -15,6 +16,18 @@ from collections import OrderedDict, defaultdict
 from multiprocessing import Process, Manager, Value
 from typing import Any, List, Union
 
+import collections
+import logging
+import os
+import signal
+import time
+from multiprocessing import Value
+from threading import Thread 
+from yarr.agents.agent import ScalarSummary
+from yarr.agents.agent import Summary
+from yarr.envs.env import Env
+from yarr.replay_buffer.replay_buffer import ReplayBuffer
+from yarr.runners._env_runner import _EnvRunner 
 import numpy as np
 from yarr.agents.agent import Agent
 from yarr.replay_buffer.wrappers.pytorch_replay_buffer import \
@@ -39,6 +52,7 @@ class MultiTaskEnvRunner(EnvRunner):
                 env: MultiTaskRLBenchEnv, 
                 agent: Agent,
                 replays, #OrderedDict[ReplayBuffer],
+                device_list, # List[int] = None,
                 n_train: int, 
                 n_eval: int,
                 episodes: int,
@@ -46,7 +60,9 @@ class MultiTaskEnvRunner(EnvRunner):
                 stat_accumulator: Union[MultiTaskAccumulator, None] = None,
                 rollout_generator: RolloutGenerator = None,
                 weightsdir: str = None,
-                max_fails: int = 5):
+                max_fails: int = 5,
+                use_gpu: bool = False,
+                ):
 
         super(MultiTaskEnvRunner, self).__init__(
             env, agent, list(replays.values())[0], # needs overwrite
@@ -64,7 +80,9 @@ class MultiTaskEnvRunner(EnvRunner):
          
         self._total_transitions = deepcopy(self._new_transitions)
         self.last_step_time  = 0
-        print(f'Using {self.n_tasks} replay buffers for tasks:', replays.keys() ) 
+        print(f'Using {self.n_tasks} replay buffers for tasks:', replays.keys() )
+        self.use_gpu = use_gpu 
+        self.device_list = device_list 
     
 
     def summaries(self): # -> List[Summary]:
@@ -119,6 +137,56 @@ class MultiTaskEnvRunner(EnvRunner):
             self._internal_env_runner.stored_transitions[:] = []  # Clear list
         return new_transitions
  
+    def _run(self, save_load_lock):
+        """Give internal runner a eval gpu """
+        self._internal_env_runner = _EnvRunner(
+            self._env, self._env, self._agent, self._replay_buffer.timesteps, self._train_envs,
+            self._eval_envs, self._episodes, self._episode_length, 
+            self._kill_signal, self._step_signal, 
+            self._rollout_generator, 
+            save_load_lock,
+            self.current_replay_ratio, 
+            self.target_replay_ratio,
+            self._weightsdir, 
+            eval_device=(self.device_list[-1] if self.use_gpu else None))
+        training_envs = self._internal_env_runner.spin_up_envs('train_env', self._train_envs, False)
+        eval_envs = self._internal_env_runner.spin_up_envs('eval_env', self._eval_envs, True)
+        envs = training_envs + eval_envs
+        no_transitions = {env.name: 0 for env in envs}
+        while True:
+            for p in envs:
+                if p.exitcode is not None:
+                    envs.remove(p)
+                    if p.exitcode != 0:
+                        self._internal_env_runner.p_failures[p.name] += 1
+                        n_failures = self._internal_env_runner.p_failures[p.name]
+                        if n_failures > self._max_fails:
+                            logging.error('Env %s failed too many times (%d times > %d)' %
+                                          (p.name, n_failures, self._max_fails))
+                            raise RuntimeError('Too many process failures.')
+                        logging.warning('Env %s failed (%d times <= %d). restarting' %
+                                        (p.name, n_failures, self._max_fails))
+                        p = self._internal_env_runner.restart_process(p.name)
+                        envs.append(p)
+
+            if not self._kill_signal.value:
+                new_transitions = self._update()
+                for p in envs:
+                    if new_transitions[p.name] == 0:
+                        no_transitions[p.name] += 1
+                    else:
+                        no_transitions[p.name] = 0
+                    if no_transitions[p.name] > 600:  # 5min
+                        logging.warning("Env %s hangs, so restarting" % p.name)
+                        envs.remove(p)
+                        os.kill(p.pid, signal.SIGTERM)
+                        p = self._internal_env_runner.restart_process(p.name)
+                        envs.append(p)
+                        no_transitions[p.name] = 0
+
+            if len(envs) == 0:
+                break
+            time.sleep(1)
 
 # class MultiEnvRunner(object):
 #     """Manages a list of base _EnvRunners, each uses a different RLBench task"""

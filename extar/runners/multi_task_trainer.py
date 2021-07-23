@@ -71,17 +71,21 @@ class MultiTaskPyTorchTrainer(TrainRunner):
         self._task_names = sorted(replays.keys())
         self._replay_list = [self._replays.get(name) for name in self._task_names]
          
+        self._replay_buffer_sample_rates = replay_buffer_sample_rates
         if replay_buffer_sample_rates == [1.0] and len(replays) > 1:
             self._replay_buffer_sample_rates = [1.0/len(replays) for r in replays.keys()]
-            print('Setting same sampling rates for all tasks to:', )
+            print('Setting same sampling rates for all tasks to:',  self._replay_buffer_sample_rates)
+        else:
+            if sum(self._replay_buffer_sample_rates) != 1:
+                raise ValueError('Sum of sampling rates should be 1.')
         if len(self._replay_buffer_sample_rates) != len(replays):
             raise ValueError(
                 'Numbers of replay buffers differs from sampling rates.')
-        if sum(self._replay_buffer_sample_rates) != 1:
-            raise ValueError('Sum of sampling rates should be 1.')
 
         self._train_device = train_device
         self._device_list = device_list 
+        if len(device_list) > 1: # let's do single-gpu training for now, use the last ones for agent rollouts
+            self._device_list = self._device_list[1:]
         self._csv_logging = csv_logging
 
         if replay_ratio is not None and replay_ratio < 0:
@@ -108,6 +112,7 @@ class MultiTaskPyTorchTrainer(TrainRunner):
 
     def _save_model(self, i):
         """Copied from PyTorchTrainRunner """
+        print('Debugging: saving model at step', i)
         with self._save_load_lock:
             d = os.path.join(self._weightsdir, str(i))
             os.makedirs(d, exist_ok=True)
@@ -147,7 +152,7 @@ class MultiTaskPyTorchTrainer(TrainRunner):
     def _get_sum_add_counts(self):
         return sum([ r.replay_buffer.add_count for r in self._replay_list] )
     
-    def start(self):
+    def start(self, load_dir=None):
     
         signal.signal(signal.SIGINT, self._signal_handler)
 
@@ -158,16 +163,24 @@ class MultiTaskPyTorchTrainer(TrainRunner):
 
         self._agent = copy.deepcopy(self._agent)
         self._agent.build(training=True, device=self._train_device)
-        if len(self.device_list) > 1:
-            self._agent = nn.DataParallel(self._agent)
+        if load_dir is not None:
+            print('Loading weights')
+            self._agent.load_weights(load_dir)
+        # if len(self.device_list) > 1:
+        #     self._agent = nn.DataParallel(self._agent)
 
         if self._weightsdir is not None:
             self._save_model(0)  # Save weights so workers can load.
 
+        logging.info('Waiting for %d samples before training. After demos, currently have %s.' %
+                (self._transitions_before_train, str(self._get_add_counts())))
         while (np.any(self._get_add_counts() < self._transitions_before_train)):
             time.sleep(1)
-            logging.info(
-                'Waiting for %d samples before training. Currently have %s.' %
+            # logging.info(
+            #     'Waiting for %d samples before training. Currently have %s.' %
+            #     (self._transitions_before_train, str(self._get_add_counts())))
+        # if (np.all(self._get_add_counts() > self._transitions_before_train)):
+        logging.info('Finished adding all %d samples before training. Currently have %s.' %
                 (self._transitions_before_train, str(self._get_add_counts())))
 
         datasets = [r.dataset() for r in self._replay_list]
@@ -179,11 +192,15 @@ class MultiTaskPyTorchTrainer(TrainRunner):
         num_cpu = psutil.cpu_count()
 
         for i in range(self._iterations):
-            runner_time = time.time() - self._env_runner.time_since_last_step()
-            self.accumulate_times['env_step'] += runner_time 
-            self._env_runner.set_step(i)
+            
+            if i > 0:
+                runner_time =  time.time() - self._env_runner.last_step_time
+                self.accumulate_times['env_step'] += runner_time 
 
-            log_iteration = i % self._log_freq == 0 and i > 0
+            self._env_runner.set_step(i) 
+            
+            
+            log_iteration = i % self._log_freq == 0  
             if log_iteration:
                 process.cpu_percent(interval=None)
 

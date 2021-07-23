@@ -1,12 +1,41 @@
-# python mt_launch.py rlbench.tasks='${4_task_A}' rlbench.eval_tasks='${4_task_A}' run_name=Batch64-Voxel16x16
-# python mt_launch.py rlbench.tasks='${4_task_A}' rlbench.eval_tasks='${4_task_A}' run_name=-Batch64-Voxel16x16x16 C2FARM.voxel_sizes=[16,16,16]
+# python mt_launch.py rlbench.tasks='${4_task_A}' rlbench.eval_tasks='${4_task_A}' run_name=-Batch64-Voxel16x16
+# python mt_launch.py rlbench.tasks='${4_task_A}' rlbench.eval_tasks='${4_task_A}' run_name=-Batch64-lr3e4-Voxel16x16 method.lr=3e-4
+# python mt_launch.py rlbench.tasks='${4_task_A}' rlbench.eval_tasks='${4_task_A}' framework.replay_ratio=128 replay.batch_size=128 run_name=-Batch128-Voxel16x16
+
+# python mt_launch.py run_name=-Batch64-burn method.lr=3e-4 env_runner.use_gpu=True rlbench.eval_tasks='${4_task_B}'
+
+# python mt_launch.py rlbench.tasks='${4_task_B}' rlbench.eval_tasks='${4_task_B}' run_name=-Batch64-Voxel16x16
+# python mt_launch.py rlbench.tasks='${4_task_B}' rlbench.eval_tasks='${4_task_B}' run_name=-Batch64-lr3e4-Voxel16x16 method.lr=3e-4
+# python mt_launch.py rlbench.tasks='${4_task_B}' rlbench.eval_tasks='${4_task_B}' framework.replay_ratio=128 replay.batch_size=128 run_name=-Batch128-Voxel16x16
+
+# export QT_LOGGING_RULES='*.debug=false;qt.qpa.*=false'
+# export DISPLAY=:0.0; export DISPLAY=:1.1; export DISPLAY=:2.2; export DISPLAY=:3.3; export DISPLAY=:4.4; export DISPLAY=:5.5; export DISPLAY=:6.6; export DISPLAY=:7.7 
+# 0721: add wandb
+
+# python mt_launch.py rlbench.tasks='${4_task_A}' rlbench.eval_tasks='${4_task_A}' run_name=-Batch64-lr3e4-Voxel16x16 method.lr=3e-4 
+# taskset -c 15-30 python mt_launch.py rlbench.tasks='${7_task_easy}' run_name=-Batch63-Voxel16x16-3e4 method.lr=3e-4 replay.batch_size=63
+#  python mt_launch.py rlbench.tasks='${7_task_easy}' run_name=-Batch63-Voxel16x16-1e4 method.lr=1e-4 replay.batch_size=63
+#  python mt_launch.py rlbench.tasks='${7_task_hard}' run_name=-Hard-Batch63-Voxel16x16-1e4 method.lr=1e-4 replay.batch_size=63
+
+# 0722 load back:
+#  python mt_launch.py rlbench.tasks=[reach_target] framework.save_freq=10 framework.log_freq=10 rlbench.eval_tasks=[reach_target,pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin] run_name=-Batch64-Load-4Task-Step2500 load=true method.lr=3e-4
+# framework.transitions_before_train=20
+
+# 0723: 7_task_hard:
+# taskset -c 0-15 python mt_launch.py rlbench.tasks='${7_task_hard}' run_name=-Hard-Batch63-Voxel16x16-3e4 method.lr=3e-4 replay.batch_size=63
+# export DISPLAY=:0.0; export DISPLAY=:1.1; export DISPLAY=:2.2; export DISPLAY=:3.3; export DISPLAY=:4.4; export DISPLAY=:5.5; export DISPLAY=:6.6; export DISPLAY=:7.7 ; taskset -c 15-33 python mt_launch.py rlbench.tasks='${7_task_hard}' run_name=-Hard-Batch126-Voxel16x16-3e4 method.lr=3e-4 replay.batch_size=126
+# 
+
+
 4_task_A:   [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin]
 4_task_B:   [reach_target,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
 8_tasks:    [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,reach_target,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
+7_task_easy:    [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand] #i.e. no reach_target 
+7_task_hard:    [pick_up_cup,reach_target,pick_and_lift,put_rubbish_in_bin,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand] #i.e. no phone_on_base
 run_name:   ''
 rlbench:
-    tasks:                  [take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
-    eval_tasks:             [take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand] # doesn't necessarily equal train tasks
+    tasks:                  [take_lid_off_saucepan]
+    eval_tasks:             ${rlbench.tasks} # doesn't necessarily equal train tasks
     demos:                  10
     demo_path:              '/home/mandi/ARM/data'
     episode_length:         10
@@ -43,9 +72,10 @@ replay:
     
 
 framework:
-    log_freq: 500
-    n_train: 2
-    n_eval: 2
+    log_freq: 100
+    save_freq: 100
+    n_train: 1
+    n_eval: 1
     replay_ratio: 64 #128
     transitions_before_train: 200
     tensorboard_logging: False
@@ -62,11 +92,16 @@ env_runner:
     episodes:   99999
     episode_length: ${rlbench.episode_length}
     max_fails:  5
+    use_gpu: True
+
+load: False
+load_dir: '/home/mandi/ARM/log/4tasks-cup-lift-phone-rubbish/C2FARM-Batch64-lr3e4-Voxel16x16/seed1/weights'
+load_step: 2500
 
 trainer:
     task_per_batch: 3
     iterations: ${framework.training_iterations}
-    logdir:     ${framework.log_dir}
+    logdir:     ${framework.logdir}
     log_freq:   ${framework.log_freq}
     
     

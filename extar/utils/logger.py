@@ -86,7 +86,7 @@ class WandbLogWriter(object):
                  
                 writer.writerow(self._row_data)
 
-            #wandb.log(self._row_data)
+            wandb.log(self._row_data)
 
             self._prev_row_data = self._row_data
             self._row_data = OrderedDict()

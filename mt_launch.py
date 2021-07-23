@@ -32,6 +32,7 @@ from extar.runners.multi_task_trainer import MultiTaskPyTorchTrainer
 from extar.utils.logger import MultiTaskAccumulator, WandbLogWriter
 from extar.utils.rollouts import MultiTaskRolloutGenerator
 
+
 SHORT_NAMES = {
     'pick_up_cup':          'cup',
     'phone_on_base':        'phone',
@@ -109,17 +110,20 @@ def run_seed(cfg: DictConfig, env, cams, device, seed): # -> None:
     action_min_max = None
 
     if cfg.method.name == 'C2FARM': 
+        
         replays = c2farm.launch_utils.create_and_fill_replays(
                 cameras=cams, env=env, 
                 save_dir=replay_path if cfg.replay.use_disk else None, **cfg.replay)
         agent = c2farm.launch_utils.create_agent(cfg, env) 
+        
     else:
         raise NotImplementedError('Still need to support multi-task version of %s.' % cfg.method.name)
     
     stat_accum = MultiTaskAccumulator(
         cfg.rlbench.tasks, cfg.rlbench.eval_tasks, eval_video_fps=30, mean_only=True)
     logdir = join(cfg.log_path, 'seed%d' % seed)
-    OmegaConf.save( config=cfg, f=join(join(cfg.log_path, 'seed%d' % seed), 'config.yaml') )
+    os.makedirs(logdir, exist_ok=False)
+    
     weightsdir = join(logdir, 'weights')
 
     if action_min_max is not None:
@@ -127,7 +131,12 @@ def run_seed(cfg: DictConfig, env, cams, device, seed): # -> None:
         os.makedirs(logdir, exist_ok=True)
         with open(join(logdir, 'action_min_max.pkl'), 'wb') as f:
             pickle.dump(action_min_max, f)
- 
+    OmegaConf.save( config=cfg, f=join(cfg.log_path, 'seed%d' % seed, 'config.yaml') )
+    
+    device_list = [ i for i in range(torch.cuda.device_count()) ]
+    if len(device_list) > 1:
+        print('Warning! Using multiple GPUs idxed: ', device_list)
+        
     env_runner = MultiTaskEnvRunner( 
         env=env, 
         agent=agent, 
@@ -135,11 +144,10 @@ def run_seed(cfg: DictConfig, env, cams, device, seed): # -> None:
         weightsdir=weightsdir,
         stat_accumulator=stat_accum, 
         rollout_generator=None,
+        device_list=device_list,
         **cfg.env_runner )
 
-    device_list = [ i for i in range(torch.cuda.device_count()) ]
-    if len(device_list) > 1:
-        print('Warning! Using multiple GPUs idxed: ', device_list)
+    
     
     replays = {k: PyTorchReplayBuffer(r) for k, r in replays.items()}
     train_runner = MultiTaskPyTorchTrainer(
@@ -155,11 +163,16 @@ def run_seed(cfg: DictConfig, env, cams, device, seed): # -> None:
         log_freq=cfg.framework.log_freq,  
         transitions_before_train=cfg.framework.transitions_before_train,
         weightsdir=weightsdir,
-        save_freq=100, 
+        save_freq=cfg.framework.save_freq,  
         replay_ratio=replay_ratio, 
         csv_logging=cfg.framework.csv_logging)
 
-    train_runner.start()
+    if cfg.load:
+            print('Warning! Loading back checkpoints from:', cfg.load_dir, cfg.load_step)
+            train_runner.start(load_dir=join(cfg.load_dir, str(cfg.load_step)) )
+             
+    else:
+        train_runner.start()
     del train_runner
     del env_runner
     torch.cuda.empty_cache()
@@ -167,6 +180,7 @@ def run_seed(cfg: DictConfig, env, cams, device, seed): # -> None:
 
 @hydra.main(config_name='mt_confg', config_path='/home/mandi/ARM/conf')
 def main(cfg: DictConfig): #-> None:
+    torch.multiprocessing.set_start_method('spawn')
     cwd = os.getcwd()
     tasks_name = _gen_short_names(cfg)
     cfg.short_names = tasks_name
@@ -212,10 +226,15 @@ def main(cfg: DictConfig): #-> None:
         action_mode, 
         **cfg.rlbench.single_env_cfg)
  
-    # run = wandb.init(project='rlbench', job_type='mt_launch')
-    # run.name = log_path
-    # run.config.update(cfg)
-    # run.save()
+    run = wandb.init(project='rlbench', job_type='mt_launch')
+    run.name = log_path
+    cfg_dict = {}
+    for key in ['rlbench', 'replay', 'framework', 'env_runner', 'trainer']:
+ 
+        for sub_key in cfg[key].keys():
+            cfg_dict[key+'/'+sub_key] = cfg[key][sub_key]
+    run.config.update(cfg_dict)
+    run.save()
 
     for seed in range(existing_seeds, existing_seeds + cfg.framework.seeds):
         logging.info('Starting seed %d.' % seed)
