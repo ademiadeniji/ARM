@@ -24,7 +24,7 @@ from yarr.agents.agent import Agent
 from yarr.replay_buffer.wrappers.pytorch_replay_buffer import \
     PyTorchReplayBuffer
 from yarr.envs.env import Env
-from yarr.utils.rollout_generator import RolloutGenerator
+# from yarr.utils.rollout_generator import RolloutGenerator
 from yarr.runners.env_runner import EnvRunner
 from yarr.runners._env_runner import _EnvRunner
 from arm.custom_rlbench_env import CustomRLBenchEnv, MultiTaskRLBenchEnv
@@ -34,6 +34,7 @@ from yarr.runners.train_runner import TrainRunner
 
 from extar.runners.multi_env_runner import MultiTaskEnvRunner
 from extar.utils.logger import WandbLogWriter, MultiTaskAccumulator
+from extar.utils.rollouts import RolloutGenerator
 from yarr.agents.agent import Summary, ScalarSummary, HistogramSummary, ImageSummary, \
     VideoSummary
 import wandb 
@@ -58,7 +59,8 @@ class MultiTaskPyTorchTrainer(TrainRunner):
                 weightsdir: str = '/tmp/yarr/weights',
                 save_freq: int = 100,
                 replay_ratio: Optional[float] = None,
-                csv_logging: bool = True 
+                csv_logging: bool = True ,
+                sync_freq=100
                 ):
         super(MultiTaskPyTorchTrainer, self).__init__(
                 agent, env_runner, replays,
@@ -72,6 +74,9 @@ class MultiTaskPyTorchTrainer(TrainRunner):
         self._replay_list = [self._replays.get(name) for name in self._task_names]
          
         self._replay_buffer_sample_rates = replay_buffer_sample_rates
+        self._n_tasks = len(replays)
+        self._transitions_before_train = int(transitions_before_train / self._n_tasks)
+        logging.info(f'With {self._n_tasks}, setting each replay buffer to require {self._transitions_before_train} samples before training')    
         if replay_buffer_sample_rates == [1.0] and len(replays) > 1:
             self._replay_buffer_sample_rates = [1.0/len(replays) for r in replays.keys()]
             print('Setting same sampling rates for all tasks to:',  self._replay_buffer_sample_rates)
@@ -91,18 +96,17 @@ class MultiTaskPyTorchTrainer(TrainRunner):
         if replay_ratio is not None and replay_ratio < 0:
             raise ValueError("max_replay_ratio must be positive.")
         self._target_replay_ratio = replay_ratio
-
-        self._writer = None
+        self._writer = None if logdir is None else WandbLogWriter(self._logdir, csv_logging)
         if logdir is None:
             logging.info("Warning! 'logdir' is None. No logging will take place.")
-        else:
-            self._writer = WandbLogWriter(self._logdir, csv_logging)
+        
         if weightsdir is None:
             logging.info("Warning! 'weightsdir' was None. No weight saving will take place.")
         else:
             os.makedirs(self._weightsdir, exist_ok=True)
 
         self.accumulate_times = {'sample': 0, 'agent_step': 0, 'env_step': 0}
+        self._sync_freq = sync_freq 
     
     @property   
     def device_list(self):
@@ -156,11 +160,7 @@ class MultiTaskPyTorchTrainer(TrainRunner):
     
         signal.signal(signal.SIGINT, self._signal_handler)
 
-        self._save_load_lock = Lock()
-
-        # Kick off the environments
-        self._env_runner.start(self._save_load_lock)
-
+        
         self._agent = copy.deepcopy(self._agent)
         self._agent.build(training=True, device=self._train_device)
         if load_dir is not None:
@@ -169,17 +169,25 @@ class MultiTaskPyTorchTrainer(TrainRunner):
         # if len(self.device_list) > 1:
         #     self._agent = nn.DataParallel(self._agent)
 
+        self._save_load_lock = Lock()
+        # Kick off the environments
+        if self._env_runner._receive:
+            self._env_runner.receive(self._agent, train_step=0)
+        self._env_runner.start(self._save_load_lock)
+
+        
+
         if self._weightsdir is not None:
             self._save_model(0)  # Save weights so workers can load.
 
-        logging.info('Waiting for %d samples before training. After demos, currently have %s.' %
+        logging.info('After demos are filled, waiting for %d samples before training, currently have %s.' %
                 (self._transitions_before_train, str(self._get_add_counts())))
         while (np.any(self._get_add_counts() < self._transitions_before_train)):
             time.sleep(1)
             # logging.info(
             #     'Waiting for %d samples before training. Currently have %s.' %
             #     (self._transitions_before_train, str(self._get_add_counts())))
-        # if (np.all(self._get_add_counts() > self._transitions_before_train)):
+ 
         logging.info('Finished adding all %d samples before training. Currently have %s.' %
                 (self._transitions_before_train, str(self._get_add_counts())))
 
@@ -198,6 +206,8 @@ class MultiTaskPyTorchTrainer(TrainRunner):
                 self.accumulate_times['env_step'] += runner_time 
 
             self._env_runner.set_step(i) 
+            if self._env_runner._receive and i % self._sync_freq == 0:
+                self._env_runner.receive(self._agent, train_step=i)
             
             
             log_iteration = i % self._log_freq == 0  

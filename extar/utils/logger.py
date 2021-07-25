@@ -1,7 +1,7 @@
 import csv
 import logging
 import os
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict 
 
 import numpy as np
 import torch
@@ -24,6 +24,7 @@ class WandbLogWriter(object):
         self._prev_row_data = self._row_data = OrderedDict()
         self._csv_file = os.path.join(logdir, 'data.csv')
         self._field_names = None
+        self._images = defaultdict(list)
 
     def add_scalar(self, i, name, value):  
  
@@ -36,7 +37,6 @@ class WandbLogWriter(object):
         if len(self._row_data) == 0:
             self._row_data['step'] = i
         for name, value in scalar_dict.items():
-          
             self._row_data[name] = value.item() if isinstance(value, torch.Tensor) else value
 
 
@@ -49,11 +49,12 @@ class WandbLogWriter(object):
                 #     if isinstance(summary, HistogramSummary):
                 #         self._tf_writer.add_histogram(
                 #             summary.name, summary.value, i)
-                #     elif isinstance(summary, ImageSummary):
-                #         # Only grab first item in batch
-                #         v = (summary.value if summary.value.ndim == 3 else
-                #              summary.value[0])
-                #         self._tf_writer.add_image(summary.name, v, i)
+                elif isinstance(summary, ImageSummary):
+                    # Only grab first item in batch
+                    v = (summary.value if summary.value.ndim == 3 else
+                            summary.value[0])
+                    #self._tf_writer.add_image(summary.name, v, i)
+                    self._images[i].append(v)
                 #     elif isinstance(summary, VideoSummary):
                 #         # Only grab first item in batch
                 #         v = (summary.value if summary.value.ndim == 5 else
@@ -87,6 +88,10 @@ class WandbLogWriter(object):
                 writer.writerow(self._row_data)
 
             wandb.log(self._row_data)
+            for step, imgs in self._images.items():
+                for i, img in enumerate(imgs):
+                    wandb.log({f'Img-Step{step}-Idx{i}': wandb.Image(img) })
+                self._images[step] = [] 
 
             self._prev_row_data = self._row_data
             self._row_data = OrderedDict()

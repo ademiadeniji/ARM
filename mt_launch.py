@@ -29,9 +29,7 @@ from omegaconf import DictConfig, OmegaConf, ListConfig
 
 from extar.runners.multi_env_runner import MultiTaskEnvRunner
 from extar.runners.multi_task_trainer import MultiTaskPyTorchTrainer
-from extar.utils.logger import MultiTaskAccumulator, WandbLogWriter
-from extar.utils.rollouts import MultiTaskRolloutGenerator
-
+from extar.utils.logger import MultiTaskAccumulator, WandbLogWriter 
 
 SHORT_NAMES = {
     'pick_up_cup':          'cup',
@@ -144,7 +142,7 @@ def run_seed(cfg: DictConfig, env, cams, device, seed): # -> None:
         weightsdir=weightsdir,
         stat_accumulator=stat_accum, 
         rollout_generator=None,
-        device_list=device_list,
+        device_list=device_list[1:],
         **cfg.env_runner )
 
     
@@ -156,13 +154,14 @@ def run_seed(cfg: DictConfig, env, cams, device, seed): # -> None:
         replays=replays, 
         train_device=device, 
         device_list=device_list, 
-        replay_buffer_sample_rates=cfg.framework.replay_sample_rates,
         stat_accumulator=stat_accum,
-        iterations=cfg.framework.training_iterations, 
         logdir=logdir, 
+        weightsdir=weightsdir,
+        iterations=cfg.framework.training_iterations, 
+        replay_buffer_sample_rates=cfg.framework.replay_buffer_sample_rates,
         log_freq=cfg.framework.log_freq,  
         transitions_before_train=cfg.framework.transitions_before_train,
-        weightsdir=weightsdir,
+        
         save_freq=cfg.framework.save_freq,  
         replay_ratio=replay_ratio, 
         csv_logging=cfg.framework.csv_logging)

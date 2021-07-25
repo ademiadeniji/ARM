@@ -253,6 +253,9 @@ class MultiTaskRLBenchEnv(CustomRLBenchEnv):
                  sample_method: str = 'uniform'
                  ):
         self.train_tasks = train_tasks
+        self.train_task_classes = {
+            name: task_file_to_task_class(name) for name in train_tasks }
+
         self.eval_tasks = eval_tasks 
         self.unique_tasks = {
             name: task_file_to_task_class(name) for name in \

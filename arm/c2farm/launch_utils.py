@@ -5,6 +5,7 @@ from copy import deepcopy
 import numpy as np
 from omegaconf import DictConfig
 from rlbench.backend.observation import Observation
+from rlbench.backend.utils import task_file_to_task_class
 from rlbench.demo import Demo
 from yarr.envs.env import Env
 from yarr.replay_buffer.prioritized_replay_buffer import \
@@ -216,14 +217,14 @@ def create_and_fill_replays(
     """ Merge the create and fill methods above and return an ordereddict of task->replays """
     replays = OrderedDict()
     sub_batch_size = int(batch_size / env.n_train_tasks)
-    for task_name, task_class in env.unique_tasks.items():
+    for task_name, task_class in env.train_task_classes.items(): # NOTE: changed here to only create buffers for training 
         replay = create_replay(sub_batch_size, timesteps, prioritisation,
                   save_dir, cameras, env, voxel_sizes, replay_size)
         # set a task first before filling the replay
         logging.info(f'Filling replay for task **{task_name}** with {num_demos} demos...')
         for d_idx in range(num_demos):
             one_env = deepcopy(env)
-            one_env._task_class = task_class
+            one_env._task_class = task_class # task_file_to_task_class(task_name)
             demo = one_env.env.get_demos(
                 task_name, 1, variation_number=0, random_selection=False,
                 from_episode_number=d_idx)[0]

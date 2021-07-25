@@ -79,6 +79,10 @@ class PreprocessAgent(Agent):
 
     def load_weights(self, savedir: str):
         self._pose_agent.load_weights(savedir)
+    
+    def load_agent(self, incoming_agent):
+        self._pose_agent.load_state_dict(incoming_agent.state_dict(), map_location=torch.device('cpu') if self._device is None else self._device )
+
 
     def save_weights(self, savedir: str):
         self._pose_agent.save_weights(savedir)
