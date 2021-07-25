@@ -97,7 +97,7 @@ class MultiTaskEnvRunner(object):
             self._new_transitions[task_name+'_train'] = 0 
             self._new_transitions[task_name+'_eval'] = 0
         self._total_transitions = deepcopy(self._new_transitions)
-        self.last_step_time  = 0
+        self._last_step_time  = Value('i', 0)
         
         self.use_gpu = use_gpu # for eval 
         if use_gpu:
@@ -154,16 +154,13 @@ class MultiTaskEnvRunner(object):
             self.current_replay_ratio, 
             self.target_replay_ratio,
             self._weightsdir, 
-            device_list=self.device_list if self.use_gpu else None,
-            receive=self._receive,
-            incoming=self.curr_agent,
-            train_step=self.curr_train_step,
+            device_list=self.device_list if self.use_gpu else None, 
             )
 
-        #envs = self._internal_env_runner.spinup_train_and_eval(n_train=self._n_train, n_eval=self._n_eval, name='_env')
-        training_envs = self._internal_env_runner.spin_up_envs('train_env', self._n_train, False)
-        eval_envs = self._internal_env_runner.spin_up_envs('eval_env', self._n_eval, True)
-        envs = training_envs + eval_envs
+        envs = self._internal_env_runner.spinup_train_and_eval(n_train=self._n_train, n_eval=self._n_eval, name='_env')
+        # training_envs = self._internal_env_runner.spin_up_envs('train_env', self._n_train, False)
+        # eval_envs = self._internal_env_runner.spin_up_envs('eval_env', self._n_eval, True)
+        # envs = training_envs + eval_envs
         no_transitions = {env.name: 0 for env in envs}
         while True:
             for p in envs:
@@ -178,7 +175,7 @@ class MultiTaskEnvRunner(object):
                             raise RuntimeError('Too many process failures.')
                         logging.warning('Env %s failed (%d times <= %d). restarting' %
                                         (p.name, n_failures, self._max_fails))
-                        p = self._internal_env_runner.restart_process(p.name)
+                        p = self._internal_env_runner.restart(p.name)
                         envs.append(p)
 
             if not self._kill_signal.value:
@@ -229,7 +226,7 @@ class MultiTaskEnvRunner(object):
     
     def set_step(self, step):
         self._step_signal.value = step
-        self.last_step_time = time.time()
+        self._last_step_time.value = time.time()
         
     def time_since_last_step(self):
-        return time.time() - self.last_step_time 
+        return time.time() - self._last_step_time.value  

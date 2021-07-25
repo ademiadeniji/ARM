@@ -159,8 +159,11 @@ class MultiTaskPyTorchTrainer(TrainRunner):
     def start(self, load_dir=None):
     
         signal.signal(signal.SIGINT, self._signal_handler)
+        self._save_load_lock = Lock()
 
-        
+        # Kick off the environments
+        self._env_runner.start(self._save_load_lock)
+
         self._agent = copy.deepcopy(self._agent)
         self._agent.build(training=True, device=self._train_device)
         if load_dir is not None:
@@ -168,15 +171,10 @@ class MultiTaskPyTorchTrainer(TrainRunner):
             self._agent.load_weights(load_dir)
         # if len(self.device_list) > 1:
         #     self._agent = nn.DataParallel(self._agent)
-
-        self._save_load_lock = Lock()
+ 
         # Kick off the environments
-        if self._env_runner._receive:
-            self._env_runner.receive(self._agent, train_step=0)
-        self._env_runner.start(self._save_load_lock)
-
-        
-
+        # if self._env_runner._receive:
+        #     self._env_runner.receive(self._agent, train_step=0)
         if self._weightsdir is not None:
             self._save_model(0)  # Save weights so workers can load.
 
@@ -206,8 +204,8 @@ class MultiTaskPyTorchTrainer(TrainRunner):
                 self.accumulate_times['env_step'] += runner_time 
 
             self._env_runner.set_step(i) 
-            if self._env_runner._receive and i % self._sync_freq == 0:
-                self._env_runner.receive(self._agent, train_step=i)
+            # if self._env_runner._receive and i % self._sync_freq == 0:
+            #     self._env_runner.receive(self._agent, train_step=i)
             
             
             log_iteration = i % self._log_freq == 0  

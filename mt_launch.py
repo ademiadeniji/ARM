@@ -225,17 +225,16 @@ def main(cfg: DictConfig): #-> None:
         action_mode, 
         **cfg.rlbench.single_env_cfg)
  
-    run = wandb.init(project='rlbench', job_type='mt_launch')
-    run.name = log_path
-    cfg_dict = {}
-    for key in ['rlbench', 'replay', 'framework', 'env_runner', 'trainer']:
- 
-        for sub_key in cfg[key].keys():
-            cfg_dict[key+'/'+sub_key] = cfg[key][sub_key]
-    run.config.update(cfg_dict)
-    run.save()
-
     for seed in range(existing_seeds, existing_seeds + cfg.framework.seeds):
+        run = wandb.init(project='rlbench', job_type='mt_launch')
+        run.name = log_path
+        cfg_dict = {}
+        for key in ['rlbench', 'replay', 'framework', 'env_runner', 'trainer']:
+            for sub_key in cfg[key].keys():
+                cfg_dict[key+'/'+sub_key] = cfg[key][sub_key]
+        run.config.update(cfg_dict)
+        run.save()
+        run.name = str(join(cfg.log_path, 'seed%d' % seed))
         logging.info('Starting seed %d.' % seed)
         run_seed(cfg, env, cfg.rlbench.cameras, device, seed)
 

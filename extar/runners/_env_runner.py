@@ -68,10 +68,10 @@ class _EnvRunner(object):
         else:
             logging.info('Warning! Agent NOT using GPU in internal _EnvRunner')
 
-    def restart_process(self, name: str):
-        p = Process(target=self._run_env, args=self._p_args[name], name=name)
-        p.start()
-        return p
+    # def restart_process(self, name: str):
+    #     p = Process(target=self._run_env, args=self._p_args[name], name=name)
+    #     p.start()
+    #     return p where the fuck did this come from??
 
     def spin_up_envs(self, name: str, num_envs: int, eval: bool):
         ps = []
@@ -80,35 +80,32 @@ class _EnvRunner(object):
             self._p_args[n] = (n, eval, i)
             self.p_failures[n] = 0
             p = Process(target=self._run_env, args=self._p_args[n], name=n)
-            #p.start()
-            ps.append(p)
-        for p in ps:
             p.start()
+            ps.append(p)
         return ps
     
     def spinup_train_and_eval(self, n_train: int, n_eval: int, name: str = '_env'):
         # add logic to split devices
         ps = []
         for i in range(n_train):
-            n = 'train' + name + str(i)
-            self._p_args[n] = (n, False, i)
-            self.p_failures[n] = 0
-            p = Process(target=self._run_env, args=self._p_args[n], name=n)
+            proc_name = 'train' + name + str(i)
+            self._p_args[proc_name] = (proc_name, False, i)
+            self.p_failures[proc_name] = 0
+            p = Process(target=self._run_env, args=self._p_args[proc_name], name=proc_name)
             p.start() 
             ps.append(p)
         
         for j in range(i, i + n_eval):
-            n = 'eval' + name + str(j)
-            self._p_args[n] = (n, True, j)
-            self.p_failures[n] = 0
-            p = Process(target=self._run_env, args=self._p_args[n], name=n)
+            proc_name = 'eval' + name + str(j)
+            self._p_args[proc_name] = (proc_name, True, j)
+            self.p_failures[proc_name] = 0
+            p = Process(target=self._run_env, args=self._p_args[proc_name], name=proc_name)
             p.start() 
             ps.append(p)
 
         return ps 
 
     
-
     def _load_save(self, device=None):
         if self._weightsdir is None:
             logging.info("'weightsdir' was None, so not loading weights.")
@@ -170,8 +167,7 @@ class _EnvRunner(object):
         env.eval = eval
         env.launch()
         for ep in range(self._episodes):
-            if not self.receive:
-                self._load_save()
+            self._load_save()
             logging.debug('%s: Starting episode %d.' % (name, ep))
             episode_rollout = []
             generator = self._rollout_generator.generator(
@@ -224,5 +220,5 @@ class _EnvRunner(object):
             raise RuntimeError('Too many process failures.')
         logging.warning('Env %s failed (%d times <= %d). restarting' %
                         (p.name, n_failures, max_fails))
-        return self.restart_process(p.name)
+        return self.restart(p.name)
 

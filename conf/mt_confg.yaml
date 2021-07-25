@@ -87,8 +87,8 @@ framework:
     sync_freq: 10
 
 env_runner:
-    n_train:    2
-    n_eval:     2
+    n_train:    3
+    n_eval:     3
     episodes:   99999
     episode_length: ${rlbench.episode_length}
     max_fails:  5
