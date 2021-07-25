@@ -72,6 +72,10 @@ class _EnvRunner(object):
     #     p = Process(target=self._run_env, args=self._p_args[name], name=name)
     #     p.start()
     #     return p where the fuck did this come from??
+    def restart(self, name: str):
+        p = Process(target=self._run_env, args=self._p_args[name], name=name)
+        p.start()
+        return p
 
     def spin_up_envs(self, name: str, num_envs: int, eval: bool):
         ps = []
@@ -105,7 +109,6 @@ class _EnvRunner(object):
 
         return ps 
 
-    
     def _load_save(self, device=None):
         if self._weightsdir is None:
             logging.info("'weightsdir' was None, so not loading weights.")
