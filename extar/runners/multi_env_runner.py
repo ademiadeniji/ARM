@@ -13,7 +13,14 @@ import torch
 import logging
 from copy import deepcopy 
 from collections import OrderedDict, defaultdict
-from multiprocessing import Process, Manager, Value
+# from multiprocessing import Process, Manager, Value
+from torch.multiprocessing import Manager,  Pool, Process, set_start_method
+try:
+     set_start_method('spawn')
+except RuntimeError:
+    pass
+
+
 from typing import Any, List, Union
 
 import collections
@@ -21,13 +28,12 @@ import logging
 import os
 import signal
 import time
-from multiprocessing import Value
+ 
 from threading import Thread 
 from yarr.agents.agent import ScalarSummary
 from yarr.agents.agent import Summary
 from yarr.envs.env import Env
-from yarr.replay_buffer.replay_buffer import ReplayBuffer
-from yarr.runners._env_runner import _EnvRunner 
+from yarr.replay_buffer.replay_buffer import ReplayBuffer 
 import numpy as np
 from yarr.agents.agent import Agent
 from yarr.replay_buffer.wrappers.pytorch_replay_buffer import \
@@ -36,11 +42,13 @@ from yarr.envs.env import Env
 from yarr.utils.rollout_generator import RolloutGenerator
 from yarr.replay_buffer.replay_buffer import ReplayBuffer
 from yarr.runners.env_runner import EnvRunner
-from yarr.runners._env_runner import _EnvRunner
+# from yarr.runners._env_runner import _EnvRunner
 from arm.custom_rlbench_env import CustomRLBenchEnv, MultiTaskRLBenchEnv
 from yarr.utils.stat_accumulator import StatAccumulator
 from yarr.agents.agent import Summary, ScalarSummary, HistogramSummary, ImageSummary, \
     VideoSummary
+
+from extar.runners._env_runner import _EnvRunner
 from extar.utils.logger import MultiTaskAccumulator, MultiTaskAccumulator
 from extar.utils.rollouts import MultiTaskRolloutGenerator
 
@@ -83,6 +91,7 @@ class MultiTaskEnvRunner(EnvRunner):
         print(f'Using {self.n_tasks} replay buffers for tasks:', replays.keys() )
         self.use_gpu = use_gpu 
         self.device_list = device_list 
+        #self._load_agent = Value('agent_params', None)
     
 
     def summaries(self): # -> List[Summary]:
@@ -96,7 +105,7 @@ class MultiTaskEnvRunner(EnvRunner):
         for k in self._new_transitions.keys():
             self._new_transitions[k] = 0
         summaries.extend(self._agent_summaries)
-        return summaries
+        return summaries 
     
     def set_step(self, step):
         self._step_signal.value = step
@@ -137,6 +146,15 @@ class MultiTaskEnvRunner(EnvRunner):
             self._internal_env_runner.stored_transitions[:] = []  # Clear list
         return new_transitions
  
+    def recieve_agent(self, params, step):
+        
+        self._load_agent.value, self._load_step.value = params, step
+        if self._load_agent.value is not None:
+            print('Attempting to receieve at step', self._load_step)
+        self._internal_env_runner._load_agent = params 
+        self._internal_env_runner._load_step = step
+
+
     def _run(self, save_load_lock):
         """Give internal runner a eval gpu """
         self._internal_env_runner = _EnvRunner(
@@ -148,13 +166,24 @@ class MultiTaskEnvRunner(EnvRunner):
             self.current_replay_ratio, 
             self.target_replay_ratio,
             self._weightsdir, 
-            eval_device=(self.device_list[-1] if self.use_gpu else None))
-        training_envs = self._internal_env_runner.spin_up_envs('train_env', self._train_envs, False)
-        eval_envs = self._internal_env_runner.spin_up_envs('eval_env', self._eval_envs, True)
-        envs = training_envs + eval_envs
+            device_list=(self.device_list[1:] if self.use_gpu else None))
+ 
+        # training_envs = self._internal_env_runner.spin_up_envs('train_env', self._train_envs, False)
+        # eval_envs = self._internal_env_runner.spin_up_envs('eval_env', self._eval_envs, True)
+        # envs = training_envs + eval_envs
+        envs = self._internal_env_runner.spinup_train_and_eval(self._train_envs, self._eval_envs, 'env')
         no_transitions = {env.name: 0 for env in envs}
         while True:
             for p in envs:
+                if self._load_agent is not None:
+                    print('Attempting to receieve at step', self._load_step)
+                    self._internal_env_runner._load_agent = params 
+                    self._internal_env_runner._load_step = step
+        
+                    envs.remove(p)
+                    p = self._internal_env_runner.restart(p.name)
+                    envs.append(p)
+
                 if p.exitcode is not None:
                     envs.remove(p)
                     if p.exitcode != 0:
@@ -166,7 +195,7 @@ class MultiTaskEnvRunner(EnvRunner):
                             raise RuntimeError('Too many process failures.')
                         logging.warning('Env %s failed (%d times <= %d). restarting' %
                                         (p.name, n_failures, self._max_fails))
-                        p = self._internal_env_runner.restart_process(p.name)
+                        p = self._internal_env_runner.restart(p.name)
                         envs.append(p)
 
             if not self._kill_signal.value:

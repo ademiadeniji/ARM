@@ -180,7 +180,7 @@ def run_seed(cfg: DictConfig, env, cams, device, seed): # -> None:
 
 @hydra.main(config_name='mt_confg', config_path='/home/mandi/ARM/conf')
 def main(cfg: DictConfig): #-> None:
-    torch.multiprocessing.set_start_method('spawn')
+    #torch.multiprocessing.set_start_method('spawn')
     cwd = os.getcwd()
     tasks_name = _gen_short_names(cfg)
     cfg.short_names = tasks_name
