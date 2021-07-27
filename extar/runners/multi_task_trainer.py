@@ -198,8 +198,8 @@ class MultiTaskPyTorchTrainer(TrainRunner):
                 self.accumulate_times['env_step'] += runner_time 
 
             self._env_runner.set_step(i) 
-            params = [qfunc._q.state_dict() for qfunc in self._agent._pose_agent._qattention_agents]
-            self._env_runner.recieve_agent(copy.deepcopy(params), i)
+            # params = [qfunc._q.state_dict() for qfunc in self._agent._pose_agent._qattention_agents]
+            # self._env_runner.recieve_agent(copy.deepcopy(params), i)
             
             
             log_iteration = i % self._log_freq == 0  

@@ -145,14 +145,14 @@ class _EnvRunner(object):
 
         self._agent = copy.deepcopy(self._agent)
         proc_device = self._device_list[int(proc_idx % self._num_device)] if self._device_list is not None else None
-        print(f"Process index {proc_idx}, name {name}, using device:")
-        print(proc_device)
+        # print(f"Process index {proc_idx}, name {name}, using device:")
+        # print(proc_device)
         self._agent.build(training=False, device=proc_device)
-        if self._load_agent is not None:
-            logging.info(f'Loading online agent at step {self._load_step}')
-            for qfunc, params in zip(self._agent._pose_agent._qattention_agents, params):
-                    qfunc._q.load_state_dict(params)
-            print(self._agent._pose_agent._device)
+        # if self._load_agent is not None:
+        #     logging.info(f'Loading online agent at step {self._load_step}')
+        #     for qfunc, params in zip(self._agent._pose_agent._qattention_agents, params):
+        #             qfunc._q.load_state_dict(params)
+        #     print(self._agent._pose_agent._device)
 
         logging.info('%s: Launching env.' % name)
         np.random.seed()
@@ -166,13 +166,8 @@ class _EnvRunner(object):
         env.eval = eval
         env.launch()
         for ep in range(self._episodes):
-            if self._load_agent is None:
-                self._load_save()
-            else:
-                for qfunc, params in zip(self._agent._pose_agent._qattention_agents, params):
-                    qfunc._q.load_state_dict(params)
-                print(self._agent._pose_agent._device)
-                logging.info(f'Loading online agent at step {self._load_step}')
+            self._load_save()
+            
             logging.debug('%s: Starting episode %d.' % (name, ep))
             episode_rollout = []
             generator = self._rollout_generator.generator(

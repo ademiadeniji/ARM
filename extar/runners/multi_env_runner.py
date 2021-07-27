@@ -166,7 +166,8 @@ class MultiTaskEnvRunner(EnvRunner):
             self.current_replay_ratio, 
             self.target_replay_ratio,
             self._weightsdir, 
-            device_list=(self.device_list[1:] if self.use_gpu else None))
+            device_list=(self.device_list[1:] if self.use_gpu and len(self.device_list) > 1 else None) # if having only one GPU, give it to agent update
+            )
  
         # training_envs = self._internal_env_runner.spin_up_envs('train_env', self._train_envs, False)
         # eval_envs = self._internal_env_runner.spin_up_envs('eval_env', self._eval_envs, True)
@@ -175,14 +176,14 @@ class MultiTaskEnvRunner(EnvRunner):
         no_transitions = {env.name: 0 for env in envs}
         while True:
             for p in envs:
-                if self._load_agent is not None:
-                    print('Attempting to receieve at step', self._load_step)
-                    self._internal_env_runner._load_agent = params 
-                    self._internal_env_runner._load_step = step
+                # if self._load_agent is not None:
+                #     print('Attempting to receieve at step', self._load_step)
+                #     self._internal_env_runner._load_agent = params 
+                #     self._internal_env_runner._load_step = step
         
-                    envs.remove(p)
-                    p = self._internal_env_runner.restart(p.name)
-                    envs.append(p)
+                #     envs.remove(p)
+                #     p = self._internal_env_runner.restart(p.name)
+                #     envs.append(p)
 
                 if p.exitcode is not None:
                     envs.remove(p)

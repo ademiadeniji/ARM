@@ -50,7 +50,8 @@ solve by running the sudo X section
 
 ## Installation (on RLL servers)
 ```
-conda create -n arm python=3.7 torch==1.8.1
+conda create -n arm python=3.7 pytorch==1.8.1 torchvision==0.9.1 cudatoolkit=10.1 -c pytorch
+# try 11.3 cuda: conda create -n arm python=3.8 pytorch==1.8.1 torchvision==0.9.1 cudatoolkit=11.3 -c pytorch
 conda activate arm 
 # If starting from scratch: 
 # 1. install CoppeliaSim: 
