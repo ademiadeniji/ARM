@@ -75,7 +75,7 @@ framework:
     log_freq: 100
     save_freq: 100
     n_train: 2
-    n_eval: 2
+    n_eval: 3
     replay_ratio: 64 #128
     transitions_before_train: 200
     tensorboard_logging: False

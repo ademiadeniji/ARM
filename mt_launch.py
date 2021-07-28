@@ -11,15 +11,12 @@ from rlbench.action_modes import ActionMode, GripperActionMode
 from rlbench.backend import task
 from rlbench.backend.utils import task_file_to_task_class
 from yarr.replay_buffer.wrappers.pytorch_replay_buffer import \
-    PyTorchReplayBuffer
-from yarr.runners.env_runner import EnvRunner
-from yarr.runners.pytorch_train_runner import PyTorchTrainRunner
-from yarr.utils.stat_accumulator import SimpleAccumulator
-
+    PyTorchReplayBuffer 
+    
 from arm import arm
 from arm import c2farm
 from arm.baselines import bc, td3, dac, sac
-from arm.custom_rlbench_env import CustomRLBenchEnv, MultiTaskRLBenchEnv
+from arm.custom_rlbench_env import MultiTaskRLBenchEnv
 import numpy as np
 
 import hydra
@@ -29,9 +26,7 @@ from omegaconf import DictConfig, OmegaConf, ListConfig
 
 from extar.runners.multi_env_runner import MultiTaskEnvRunner
 from extar.runners.multi_task_trainer import MultiTaskPyTorchTrainer
-from extar.utils.logger import MultiTaskAccumulator, WandbLogWriter
-from extar.utils.rollouts import MultiTaskRolloutGenerator
-
+from extar.utils.logger import MultiTaskAccumulator, WandbLogWriter 
 
 SHORT_NAMES = {
     'pick_up_cup':          'cup',
@@ -109,8 +104,7 @@ def run_seed(cfg: DictConfig, env, cams, device, seed): # -> None:
     replay_path = os.path.join(cfg.replay.path, cfg.short_names, cfg.method.name, 'seed%d' % seed)
     action_min_max = None
 
-    if cfg.method.name == 'C2FARM': 
-        
+    if cfg.method.name == 'C2FARM':  
         replays = c2farm.launch_utils.create_and_fill_replays(
                 cameras=cams, env=env, 
                 save_dir=replay_path if cfg.replay.use_disk else None, **cfg.replay)
@@ -216,8 +210,6 @@ def main(cfg: DictConfig): #-> None:
         cfg.rlbench.cameras, ListConfig) else [cfg.rlbench.cameras]
     obs_config = _create_obs_config(cfg.rlbench.cameras, cfg.rlbench.camera_resolution)
 
-    # train_envs = MultiTaskRLBenchEnv( cfg.rlbench.tasks, obs_config, action_mode, cfg.rlbench.single_env_cfg)
-    # test_envs = MultiTaskRLBenchEnv( cfg.rlbench.test_tasks, obs_config, action_mode, cfg.rlbench.single_env_cfg)
     # contains both train and eval:
     env = MultiTaskRLBenchEnv(
         cfg.rlbench.tasks, 

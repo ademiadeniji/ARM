@@ -23,15 +23,11 @@ from typing import Any, List, Union, Optional
 from yarr.agents.agent import Agent
 from yarr.replay_buffer.wrappers.pytorch_replay_buffer import \
     PyTorchReplayBuffer
-from yarr.envs.env import Env
-from yarr.utils.rollout_generator import RolloutGenerator
-from yarr.runners.env_runner import EnvRunner
-from yarr.runners._env_runner import _EnvRunner
+from yarr.envs.env import Env  
+
 from arm.custom_rlbench_env import CustomRLBenchEnv, MultiTaskRLBenchEnv
 from yarr.utils.stat_accumulator import StatAccumulator
-
-from yarr.runners.train_runner import TrainRunner
-
+ 
 from extar.runners.multi_env_runner import MultiTaskEnvRunner
 from extar.utils.logger import WandbLogWriter, MultiTaskAccumulator
 from yarr.agents.agent import Summary, ScalarSummary, HistogramSummary, ImageSummary, \
@@ -40,8 +36,14 @@ import wandb
 
 NUM_WEIGHTS_TO_KEEP = 20
 
+from abc import abstractmethod, ABC
+from typing import Union, List
 
-class MultiTaskPyTorchTrainer(TrainRunner):
+from yarr.agents.agent import Agent
+from yarr.replay_buffer.wrappers import WrappedReplayBuffer
+ 
+
+class MultiTaskPyTorchTrainer(object):
     """Mainly handle the task_name - replay_buffer relation"""
     def __init__(self,
                 agent:          Agent,
@@ -60,11 +62,16 @@ class MultiTaskPyTorchTrainer(TrainRunner):
                 replay_ratio: Optional[float] = None,
                 csv_logging: bool = True 
                 ):
-        super(MultiTaskPyTorchTrainer, self).__init__(
-                agent, env_runner, replays,
-                stat_accumulator, iterations, logdir, log_freq, transitions_before_train, 
-                weightsdir, save_freq)
-
+        self._agent = agent
+        self._env_runner = env_runner
+        self._stat_accumulator = stat_accumulator
+        self._iterations = iterations
+        self._logdir = logdir
+        self._log_freq = log_freq
+        self._transitions_before_train = int(transitions_before_train / len(replays))
+        self._weightsdir = weightsdir
+        self._save_freq = save_freq
+       
         env_runner.log_freq = log_freq
         env_runner.target_replay_ratio = replay_ratio
         self._replays = replays
@@ -81,7 +88,7 @@ class MultiTaskPyTorchTrainer(TrainRunner):
         if len(self._replay_buffer_sample_rates) != len(replays):
             raise ValueError(
                 'Numbers of replay buffers differs from sampling rates.')
-
+        
         self._train_device = train_device
         self._device_list = device_list 
         if len(device_list) > 1: # let's do single-gpu training for now, use the last ones for agent rollouts
@@ -248,12 +255,12 @@ class MultiTaskPyTorchTrainer(TrainRunner):
 
             if log_iteration and self._writer is not None:
                 replay_ratio = get_replay_ratio()
-                logging.info('Step %d. ReplaySample time: %.2f. EnvStep time: %.2f. AgentUpdate time: %.2f. Replay ratio: %.3f' % (
-                             i, 
-                             self.accumulate_times['sample'], 
-                             self.accumulate_times['env_step'],
-                             self.accumulate_times['agent_step'], 
-                             replay_ratio))
+                # logging.info('Step %d. ReplaySample time: %.2f. EnvStep time: %.2f. AgentUpdate time: %.2f. Replay ratio: %.3f' % (
+                #              i, 
+                #              self.accumulate_times['sample'], 
+                #              self.accumulate_times['env_step'],
+                #              self.accumulate_times['agent_step'], 
+                #              replay_ratio))
                 agent_summaries = self._agent.update_summaries()
                 env_summaries = self._env_runner.summaries()
                 self._writer.add_summaries(i, agent_summaries + env_summaries)

@@ -3,7 +3,7 @@ from multiprocessing import Value
 import numpy as np
 from yarr.agents.agent import Agent
 from yarr.envs.env import Env
-from yarr.utils.transition import ReplayTransition
+from extar.utils.transition import ReplayTransition
 from yarr.utils.rollout_generator import RolloutGenerator  
 
 class MultiTaskRolloutGenerator(RolloutGenerator):
@@ -26,6 +26,7 @@ class MultiTaskRolloutGenerator(RolloutGenerator):
                                      act_result.replay_elements.items()}
 
             transition = env.step(act_result)
+            transition.info['task_name'] = env._task_name
             obs_tp1 = dict(transition.observation)
             timeout = False
             if step == episode_length - 1:

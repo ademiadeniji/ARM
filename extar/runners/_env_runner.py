@@ -77,6 +77,11 @@ class _EnvRunner(object):
         p = Process(target=self._run_env, args=self._p_args[name], name=name)
         p.start()
         return p
+        
+    def restart_process(self, name: str):
+        p = Process(target=self._run_env, args=self._p_args[name], name=name)
+        p.start()
+        return p
 
     def spin_up_envs(self, name: str, num_envs: int, eval: bool):
         ps = []
