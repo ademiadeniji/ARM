@@ -143,7 +143,7 @@ def run_seed(cfg: DictConfig, env, cams, device, seed): # -> None:
 
     
     
-    replays = {k: PyTorchReplayBuffer(r) for k, r in replays.items()}
+    replays = {k: PyTorchReplayBuffer(r) for k, r in replays.items() if k in env.train_tasks}
     train_runner = MultiTaskPyTorchTrainer(
         agent=agent, 
         env_runner=env_runner, 
