@@ -1,3 +1,7 @@
+"""
+Use this script to laucnh eval/visualization/analytical things
+"""
+
 import os
 import pickle
 from os.path import join 
@@ -27,6 +31,7 @@ from omegaconf import DictConfig, OmegaConf, ListConfig
 
 from extar.runners.multi_env_runner import MultiTaskEnvRunner
 from extar.runners.multi_task_trainer import MultiTaskPyTorchTrainer
+from extar.runners.eval_runner import MultiTaskEvalRunner
 from extar.utils.logger import MultiTaskAccumulator, WandbLogWriter 
 
 SHORT_NAMES = {
@@ -145,7 +150,7 @@ def run_seed(cfg: DictConfig, env, cams, device, seed): # -> None:
     
     
     replays = {k: PyTorchReplayBuffer(r) for k, r in replays.items() if k in env.train_tasks}
-    train_runner = MultiTaskPyTorchTrainer(
+    eval_runner = MultiTaskEvalRunner(
         agent=agent, 
         env_runner=env_runner, 
         replays=replays, 
@@ -162,24 +167,22 @@ def run_seed(cfg: DictConfig, env, cams, device, seed): # -> None:
         replay_ratio=replay_ratio, 
         csv_logging=cfg.framework.csv_logging)
 
-    if cfg.load:
-            print('Warning! Loading back checkpoints from:', cfg.load_dir, cfg.load_step)
-            train_runner.start(load_dir=join(cfg.load_dir, str(cfg.load_step)) )
+    assert cfg.load
+    print('Loading back checkpoints from:', cfg.load_dir, cfg.load_step)
+    eval_runner.start(load_dir=join(cfg.load_dir, str(cfg.load_step)) )
              
-    else:
-        train_runner.start()
-    del train_runner
-    del env_runner
+    del eval_runner
     torch.cuda.empty_cache()
 
 
-@hydra.main(config_name='mt_confg', config_path='/home/mandi/ARM/conf')
+@hydra.main(config_name='eval_config', config_path='/home/mandi/ARM/conf')
 def main(cfg: DictConfig): #-> None:
     #torch.multiprocessing.set_start_method('spawn')
     cwd = os.getcwd()
     tasks_name = _gen_short_names(cfg)
     cfg.short_names = tasks_name
-    log_path = join(cwd, tasks_name, cfg.method.name+cfg.run_name)
+    #cfg.load_dir.split('/')[-1]
+    log_path = join(cwd, tasks_name, cfg.method.name + '-EvalLoad-' +  cfg.run_name)
     os.makedirs(log_path, exist_ok=True)
     existing_seeds = len(list(filter(lambda x: 'seed' in x, os.listdir(log_path))))
     logging.info('Logging to:' + log_path)
@@ -219,9 +222,9 @@ def main(cfg: DictConfig): #-> None:
         action_mode, 
         **cfg.rlbench.single_env_cfg)
  
-    run = wandb.init(project='rlbench', job_type='mt_launch')
+    run = wandb.init(project='rlbench', job_type='inspect')
     run.name = log_path
-    cfg_dict = {}
+    cfg_dict = {'load': cfg.load, 'load_dir': cfg.load_dir, 'load_step': cfg.load_step}
     for key in ['rlbench', 'replay', 'framework', 'env_runner', 'trainer']:
  
         for sub_key in cfg[key].keys():

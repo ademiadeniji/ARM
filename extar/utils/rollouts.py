@@ -36,7 +36,8 @@ class MultiTaskRolloutGenerator(RolloutGenerator):
                     transition.terminal = True
                     if "needs_reset" in transition.info:
                         transition.info["needs_reset"] = True
-
+            transition.info.update(act_result.info)
+            #print('Debugging: rollouts', act_result.info.keys(), transition.info.keys())
             obs_and_replay_elems = {}
             obs_and_replay_elems.update(obs)
             obs_and_replay_elems.update(agent_obs_elems)
@@ -62,6 +63,7 @@ class MultiTaskRolloutGenerator(RolloutGenerator):
                     agent_obs_elems_tp1 = {k: np.array(v) for k, v in
                                            act_result.observation_elements.items()}
                     obs_tp1.update(agent_obs_elems_tp1)
+                    transition.info.update(act_result.info)
                 replay_transition.final_observation = obs_tp1
 
             obs = dict(transition.observation)

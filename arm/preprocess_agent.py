@@ -75,6 +75,7 @@ class PreprocessAgent(Agent):
         return sums
 
     def act_summaries(self) -> List[Summary]:
+        """This should return a list, one voxel scene per every q-attention layer """
         return self._pose_agent.act_summaries()
 
     def load_weights(self, savedir: str):

@@ -43,8 +43,8 @@ from yarr.agents.agent import Agent
 from yarr.replay_buffer.wrappers import WrappedReplayBuffer
  
 
-class MultiTaskPyTorchTrainer(object):
-    """Mainly handle the task_name - replay_buffer relation"""
+class MultiTaskEvalRunner(object):
+    """Mainly building off the Trainer but just to evaluation things here"""
     def __init__(self,
                 agent:          Agent,
                 env_runner:     MultiTaskEnvRunner,
@@ -92,8 +92,6 @@ class MultiTaskPyTorchTrainer(object):
         
         self._train_device = train_device
         self._device_list = device_list 
-        if len(device_list) > 1: # let's do single-gpu training for now, use the last ones for agent rollouts
-            self._device_list = self._device_list[1:]
         self._csv_logging = csv_logging
 
         if replay_ratio is not None and replay_ratio < 0:
@@ -160,6 +158,19 @@ class MultiTaskPyTorchTrainer(object):
     def _get_sum_add_counts(self):
         return sum([ r.replay_buffer.add_count for r in self._replay_list] )
     
+    def generate_video(self, vid_sequence):
+        eps_vid, attn_vid = [], []
+        for pair in vid_sequence:
+            agent_attn, env_img = pair 
+            for attn in agent_attn:
+                print(type(attn), attn.value.shape)
+            print('env recorded img shape:', env_img.shape)
+            eps_vid.append(env_img)
+             
+            attn_vid.append(agent_attn[-1].value)
+
+        return np.stack(eps_vid), np.stack(attn_vid)
+    
     def start(self, load_dir=None):
     
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -171,29 +182,35 @@ class MultiTaskPyTorchTrainer(object):
 
         self._agent = copy.deepcopy(self._agent)
         self._agent.build(training=True, device=self._train_device)
-        if load_dir is not None:
-            print('Loading weights')
-            self._agent.load_weights(load_dir)
+        assert load_dir is not None
+        print('Loading weights')
+        self._agent.load_weights(load_dir)
         # if len(self.device_list) > 1:
         #     self._agent = nn.DataParallel(self._agent)
 
-        if self._weightsdir is not None:
-            self._save_model(0)  # Save weights so workers can load.
+        assert self._weightsdir is not None, 'Must save that loaded checkpoint to a new dir'
+        self._save_model(0)  # Save weights so workers can load.
 
-        logging.info('Waiting for %d samples before training. After demos, currently have %s.' %
-                (self._transitions_before_train, str(self._get_add_counts())))
+        #logging.info('Waiting for %d samples before training. After demos, currently have %s.' %
+        #        (self._transitions_before_train, str(self._get_add_counts())))
         while (np.any(self._get_add_counts() < self._transitions_before_train)):
             time.sleep(1)
-            # logging.info(
-            #     'Waiting for %d samples before training. Currently have %s.' %
-            #     (self._transitions_before_train, str(self._get_add_counts())))
+            if self._env_runner._videos is not None:
+                videos = self._env_runner._videos
+                eps_vid, attn_vid = self.generate_video(videos)
+                wandb.log({'video_log_step': 0, 'episode_video': eps_vid, 'attention_video': attn_vid})
+                raise ValueError
+        #    logging.info( 'Waiting for %d samples before training. Currently have %s.' %
+                # (self._transitions_before_train, str(self._get_add_counts())))
         # if (np.all(self._get_add_counts() > self._transitions_before_train)):
+                    
+        
         logging.info('Finished adding all %d samples before training. Currently have %s.' %
                 (self._transitions_before_train, str(self._get_add_counts())))
 
-        datasets = [r.dataset() for r in self._replay_list]
-        data_iter = [iter(d) for d in datasets]
-        #get_idx_to_task = {
+        # datasets = [r.dataset() for r in self._replay_list]
+        # data_iter = [iter(d) for d in datasets]
+        # get_idx_to_task = {
             #int(i * self._replay_list[name].replay_buffer.batch_size): name for i, name in enumerate(self._task_names) }
 
         init_replay_size = self._get_sum_add_counts().astype(float)
@@ -215,90 +232,60 @@ class MultiTaskPyTorchTrainer(object):
             log_iteration = i % self._log_freq == 0  
             if log_iteration:
                 process.cpu_percent(interval=None)
-
-            def get_replay_ratio():
-                size_used = batch_size * i
-                size_added = (
-                    self._get_sum_add_counts()
-                    - init_replay_size
-                )
-                replay_ratio = size_used / (size_added + 1e-6)
-                return replay_ratio
-
-            if self._target_replay_ratio is not None:
-                # wait for env_runner collecting enough samples
-                while True:
-                    replay_ratio = get_replay_ratio()
-                    self._env_runner.current_replay_ratio.value = replay_ratio
-                    if replay_ratio < self._target_replay_ratio:
-                        break
-                    time.sleep(1)
-                    logging.debug(
-                        'Waiting for replay_ratio %f to be less than %f.' %
-                        (replay_ratio, self._target_replay_ratio))
-                del replay_ratio
+ 
 
             t = time.time()
-            sampled_batch = [next(di) for di in data_iter]
-            if len(sampled_batch) > 1:
-                result = {}
-                for key in sampled_batch[0]:
-                    result[key] = torch.cat([d[key] for d in sampled_batch], 0)
-                sampled_batch = result
-            else:
-                sampled_batch = sampled_batch[0]
+            # sampled_batch = [next(di) for di in data_iter]
+            #if len(sampled_batch) > 1:
+             #   result = {}
+            #    for key in sampled_batch[0]:
+            #        result[key] = torch.cat([d[key] for d in sampled_batch], 0)
+            #    sampled_batch = result
+            #else:
+            #    sampled_batch = sampled_batch[0]
 
-            sample_time = time.time() - t
-            self.accumulate_times['sample'] += sample_time
-            batch = {k: v.to(self._train_device) for k, v in sampled_batch.items()}
-            t = time.time()
-            self._step(i, batch)
-            step_time = time.time() - t
-            self.accumulate_times['agent_step'] += step_time 
-
+            #sample_time = time.time() - t
+            #self.accumulate_times['sample'] += sample_time
+            #batch = {k: v.to(self._train_device) for k, v in sampled_batch.items()}
+            #t = time.time()
+            #self._step(i, batch)
+            #step_time = time.time() - t
+            #self.accumulate_times['agent_step'] += 0 #step_time 
+            
             if log_iteration and self._writer is not None:
-                replay_ratio = get_replay_ratio()
+                #replay_ratio = get_replay_ratio()
                 # logging.info('Step %d. ReplaySample time: %.2f. EnvStep time: %.2f. AgentUpdate time: %.2f. Replay ratio: %.3f' % (
                 #              i, 
                 #              self.accumulate_times['sample'], 
                 #              self.accumulate_times['env_step'],
                 #              self.accumulate_times['agent_step'], 
                 #              replay_ratio))
-                agent_summaries = self._agent.update_summaries()
+                #agent_summaries = self._agent.update_summaries()
                 env_summaries = self._env_runner.summaries()
-                self._writer.add_summaries(i, agent_summaries + env_summaries)
+                self._writer.add_summaries(i, env_summaries) #agent_summaries + env_summaries)
+ 
+                #scalar_dict = {
+                    #'replay/replay_ratio':              replay_ratio,
+                    #'replay/update_to_insert_ratio':    float(i) / float(self._get_sum_add_counts() - init_replay_size + 1e-6),
+                #    'monitoring/sample_time_per_item':  sample_time / batch_size,
+                #    'monitoring/train_time_per_item':   step_time / batch_size,
+                #   'monitoring/memory_gb':             process.memory_info().rss * 1e-9,
+                #    'monitoring/cpu_percent':           process.cpu_percent(interval=None) / num_cpu,
+                #    'monitoring/accum_agent_update_time': self.accumulate_times['agent_step'],
+                #    'monitoring/accum_env_step_time': self.accumulate_times['env_step'],
+                #   'monitoring/accum_sample_time': self.accumulate_times['sample'],
 
-                for task_name, wrapped_buffer in zip(self._task_names, self._replay_list):
-                    self._writer.add_scalar(
-                        i, 'replay_%s/add_count' % task_name,
-                        wrapped_buffer.replay_buffer.add_count)
-                    self._writer.add_scalar(
-                        i, 'replay_%s/size' % task_name,
-                        wrapped_buffer.replay_buffer.replay_capacity \
-                        if wrapped_buffer.replay_buffer.is_full() else wrapped_buffer.replay_buffer.add_count)
+                #}
+                #self._writer.add_scalar_dict(i, scalar_dict)
 
-                scalar_dict = {
-                    'replay/replay_ratio':              replay_ratio,
-                    'replay/update_to_insert_ratio':    float(i) / float(self._get_sum_add_counts() - init_replay_size + 1e-6),
-                    'monitoring/sample_time_per_item':  sample_time / batch_size,
-                    'monitoring/train_time_per_item':   step_time / batch_size,
-                    'monitoring/memory_gb':             process.memory_info().rss * 1e-9,
-                    'monitoring/cpu_percent':           process.cpu_percent(interval=None) / num_cpu,
-                    'monitoring/accum_agent_update_time': self.accumulate_times['agent_step'],
-                    'monitoring/accum_env_step_time': self.accumulate_times['env_step'],
-                    'monitoring/accum_sample_time': self.accumulate_times['sample'],
+            self._writer.end_iteration()
 
-                }
-                self._writer.add_scalar_dict(i, scalar_dict)
-
-            self._writer.end_iteration(i)
-
-            if i % self._save_freq == 0 and self._weightsdir is not None:
-                self._save_model(i)
+            # if i % self._save_freq == 0 and self._weightsdir is not None:
+            #    self._save_model(i)
 
         if self._writer is not None:
             self._writer.close()
 
         logging.info('Stopping envs ...')
         self._env_runner.stop()
-        [r.replay_buffer.shutdown() for r in self._replay_list]
+         

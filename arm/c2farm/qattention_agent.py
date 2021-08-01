@@ -219,14 +219,16 @@ class QAttentionAgent(Agent):
                                          replay_sample['%s_point_cloud' % n])
                 pcd_tp1 = self._extract_crop(pc_tp1, replay_sample[
                     '%s_point_cloud_tp1' % n])
-                self._crop_summary.append((n, rgb))
-                self._crop_summary_tp1.append(('%s_tp1' % n, rgb_tp1))
+                
             else:
                 rgb = stack_on_channel(replay_sample['%s_rgb' % n])
                 rgb_tp1 = stack_on_channel(replay_sample['%s_rgb_tp1' % n])
                 pcd = stack_on_channel(replay_sample['%s_point_cloud' % n])
                 pcd_tp1 = stack_on_channel(
                     replay_sample['%s_point_cloud_tp1' % n])
+            self._crop_summary.append((n, rgb))
+            self._crop_summary_tp1.append(('%s_tp1' % n, rgb_tp1))
+            
             obs.append([rgb, pcd])
             obs_tp1.append([rgb_tp1, pcd_tp1])
             pcds.append(pcd)
@@ -235,6 +237,7 @@ class QAttentionAgent(Agent):
 
     def _act_preprocess_inputs(self, observation):
         obs, pcds = [], []
+        self._act_crop_summary = [] 
         for n in self._camera_names:
             if self._layer > 0 and 'wrist' not in n:
                 pc_t = observation['%s_pixel_coord' % n]
@@ -243,6 +246,8 @@ class QAttentionAgent(Agent):
             else:
                 rgb = stack_on_channel(observation['%s_rgb' % n])
                 pcd = stack_on_channel(observation['%s_point_cloud' % n])
+            self._act_crop_summary.append((n, rgb))
+
             obs.append([rgb, pcd])
             pcds.append(pcd)
         return obs, pcds
@@ -432,6 +437,15 @@ class QAttentionAgent(Agent):
         self._act_voxel_grid = vox_grid[0]
         self._act_max_coordinate = coords[0]
         self._act_qvalues = q[0]
+        info['%s/act_Qattention' % self._name] = visualise_voxel(
+                                 self._act_voxel_grid.cpu().numpy(),
+                                 self._act_qvalues.cpu().numpy(),
+                                 self._act_max_coordinate.cpu().numpy()
+                                 )
+        for (cam_name, rgb) in self._act_crop_summary: 
+            info[f'{self._name}/{cam_name}_crop_rgb'] = rgb.cpu().numpy()
+        
+
         return ActResult((coords, rot_grip_action),
                          observation_elements=observation_elements,
                          info=info)

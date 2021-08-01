@@ -3,7 +3,7 @@ LOAD_STEP=17500
 STEP=20000
 CPUS=0-30
 RUN=LOAD-7Task
-for TASK in phone_on_base #stack_wine take_lid_off_saucepan take_umbrella_out_of_umbrella_stand
+for TASK in phone_on_base stack_wine take_lid_off_saucepan take_umbrella_out_of_umbrella_stand
 do
     for N_DEMO in 0 1 10
         do

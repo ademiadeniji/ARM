@@ -10,19 +10,22 @@ from yarr.agents.agent import Agent
 from yarr.envs.env import Env
 from yarr.utils.rollout_generator import RolloutGenerator
 import torch 
-
+import wandb 
 from torch.multiprocessing import Manager, Pool, Process, set_start_method
 try:
      set_start_method('spawn')
 except RuntimeError:
     pass
-
+from collections import defaultdict
 # try:
 #     if get_start_method() != 'spawn':
 #         set_start_method('spawn', force=True)
 # except RuntimeError:
 #     pass
 
+import cv2
+MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape((1,3,1,1))
+STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape((1,3,1,1))
 
 class _EnvRunner(object):
 
@@ -60,6 +63,7 @@ class _EnvRunner(object):
         manager = Manager()
         self.write_lock = manager.Lock()
         self.stored_transitions = manager.list()
+        self.stored_videos = manager.dict() 
         self.agent_summaries = manager.list()
         self._kill_signal = kill_signal
         self._step_signal = step_signal
@@ -172,12 +176,15 @@ class _EnvRunner(object):
         env.launch()
         for ep in range(self._episodes):
             self._load_save()
+            #print(f'Debugging: _EnvRunner eval {eval}, episode {ep}')
             
             logging.debug('%s: Starting episode %d.' % (name, ep))
             episode_rollout = []
+            episode_video, video_tasks = [], []
             generator = self._rollout_generator.generator(
                 self._step_signal, env, self._agent,
                 self._episode_length, self._timesteps, eval)
+            
             try:
                 for replay_transition in generator:
                     while True:
@@ -201,6 +208,15 @@ class _EnvRunner(object):
                             for s in self._agent.act_summaries():
                                 self.agent_summaries.append(s)
                     episode_rollout.append(replay_transition)
+                    #if env._record_cam is not None:
+                        #print('Debugging: _EnvRunner', self._agent.act_summaries()[0].value.shape)
+                    # episode_video.append( 
+                    #     (self._agent.act_summaries(), 
+                    #     (env._record_cam.capture_rgb() * 255).astype(np.uint8) ) )
+                    #with self.write_lock:
+                    episode_video.append( {k: v for k,v in replay_transition.info.items() if 'act_Qattention' in k or '_rgb' in k } )
+                    video_tasks.append(replay_transition.info.get('task_name'))
+                    
             except StopIteration as e:
                 continue
             except Exception as e:
@@ -210,6 +226,47 @@ class _EnvRunner(object):
             with self.write_lock:
                 for transition in episode_rollout:
                     self.stored_transitions.append((name, transition, eval))
+                    #if transition.terminal:
+                    #    print('Debugging: _EnvRunner', transition.info['task_name'], transition.reward)
+                self.stored_videos[video_tasks[0]] = episode_video
+                img_arrays = defaultdict(list)
+                
+                if len(episode_video) > 1:
+                    wandb.init(project='rlbench', job_type='debug')
+                    for step, transition in enumerate(episode_rollout):
+                        tsk = transition.info.get('task_name')
+                        for k, img in transition.info.items():
+                            if '_rgb' in k: 
+                                if len(img.shape) == 5:
+                                    img = img[0,0]
+                                if len(img.shape) == 4:
+                                    img = img[0]
+                                if img.max() == 1:
+                                    img = ((img + 1)/2  * 255).astype(np.uint8)
+                                wandb.log({ tsk + '_' + k + 'step_' + str(step): wandb.Image(img)})
+
+                    
+                    for vid_step, tsk in zip(episode_video, video_tasks):
+                        #print([ (k, v.shape) for k, v in vid_step.items()])
+                        print(f"Task: {tsk}")
+                        for k, v in vid_step.items():
+                            img = v.transpose(2,0,1) if (v.shape[-1] == 3 and len(v.shape) == 3 ) else v 
+                            if len(img.shape) == 5:
+                                img = img[0,0]
+                            if len(img.shape) == 4:
+                                img = img[0]
+                            if img.max() == 1:
+                                img = ((img + 1)/2  * 255).astype(np.uint8)
+                            
+                            img_arrays[k].append(img) 
+                    for k, v in img_arrays.items():
+                        print(f'logging video {k}, length {len(v)}, {v[0].min(),v[0].max() }')
+                        stacked = np.stack(v) 
+                        wandb.log({video_tasks[0] + '_' + k: wandb.Video( stacked , fps=1)})
+                    wandb.finish()
+                    raise ValueError
+ 
+                
         env.shutdown()
 
     def kill(self):

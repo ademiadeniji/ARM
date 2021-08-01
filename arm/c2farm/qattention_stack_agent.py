@@ -78,7 +78,9 @@ class QAttentionStackAgent(Agent):
 
             infos.update(act_results.info)
 
-        
+        for n in self._camera_names:
+            infos['%s_rgb' % n] = observation['%s_rgb' % n].cpu().numpy()
+
         rgai = torch.cat(rot_grip_results, 1)[0].cpu().numpy()
         observation_elements['trans_action_indicies'] = torch.cat(translation_results, 1)[0].cpu().numpy()
         observation_elements['rot_grip_action_indicies'] = rgai

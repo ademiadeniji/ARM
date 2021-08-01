@@ -87,6 +87,7 @@ class MultiTaskEnvRunner(object):
         self._step_signal = Value('i', -1)
         self._new_transitions = {'train_envs': 0, 'eval_envs': 0}
         self._total_transitions = {'train_envs': 0, 'eval_envs': 0}
+        self._videos = None
         self.log_freq = 1000  # Will get overridden later
         self.target_replay_ratio = None  # Will get overridden later
         self.current_replay_ratio = Value('f', -1)
@@ -160,6 +161,8 @@ class MultiTaskEnvRunner(object):
                 if self._stat_accumulator is not None:
                     self._stat_accumulator.step(transition, eval)
             self._internal_env_runner.stored_transitions[:] = []  # Clear list
+            # if len( self._internal_env_runner.stored_videos ) > 1:
+            #     self._videos = self._internal_env_runner.stored_videos[0]
         return new_transitions
  
      

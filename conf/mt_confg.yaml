@@ -31,10 +31,11 @@
 4_task_B:   [reach_target,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
 8_tasks:    [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,reach_target,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
 7_task_easy:    [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand] #i.e. no reach_target 
-7_task_hard:    [pick_up_cup,reach_target,pick_and_lift,put_rubbish_in_bin,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand] #i.e. no phone_on_base
+_SimpleAccumulator:    [pick_up_cup,reach_target,pick_and_lift,put_rubbish_in_bin,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand] #i.e. no phone_on_base
+7_task_wine:    [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,reach_target,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
 run_name:   ''
 rlbench:
-    tasks:                  [take_lid_off_saucepan]
+    tasks:                  ${4_task_A}
     eval_tasks:             ${rlbench.tasks} # doesn't necessarily equal train tasks
     demos:                  10
     demo_path:              '/home/mandi/ARM/data'
@@ -75,7 +76,7 @@ framework:
     log_freq: 100
     save_freq: 100
     n_train: 2
-    n_eval: 3
+    n_eval: 2
     replay_ratio: 64 #128
     transitions_before_train: 200
     tensorboard_logging: False
@@ -96,7 +97,7 @@ env_runner:
 
 load: False
 load_dir: '/home/mandi/ARM/log/4tasks-cup-lift-phone-rubbish/C2FARM-Batch64-lr3e4-Voxel16x16/seed1/weights'
-load_step: 2500
+load_step: 10000
 
 trainer:
     task_per_batch: 3

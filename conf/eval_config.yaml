@@ -1,0 +1,88 @@
+
+4_task_A:   [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin]
+4_task_B:   [reach_target,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
+8_tasks:    [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,reach_target,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
+7_task_easy:    [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand] #i.e. no reach_target 
+7_task_hard:    [pick_up_cup,reach_target,pick_and_lift,put_rubbish_in_bin,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand] #i.e. no phone_on_base
+7_task_wine:    [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,reach_target,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
+run_name:   ''
+rlbench:
+    tasks:                  ${8_tasks}
+    eval_tasks:             ${rlbench.tasks} # doesn't necessarily equal train tasks
+    demos:                  0
+    demo_path:              '/home/mandi/ARM/data'
+    episode_length:         10
+    cameras:                [front]
+    camera_resolution:      [128, 128]
+    scene_bounds:           [-0.3, -0.5, 0.6, 0.7, 0.5, 1.6]
+    single_env_cfg:
+        # below are shared across tasks:
+        episode_length:     ${rlbench.episode_length}
+        dataset_root:       ${rlbench.demo_path} 
+        channels_last:      False 
+        reward_scale:       100.0
+        headless:           True
+        state_includes_remaining_time: True
+        include_previous_action:       False 
+        sample_method:      'uniform'
+
+replay:
+    batch_size:             64 # 128 might be too big
+    timesteps:              1    
+    prioritisation:         True
+    use_disk:               False
+    path:                   '/home/mandi/ARM/replay'  # Only used when use_disk is True.
+    replay_size:            100000
+    num_demos:              ${rlbench.demos}
+    # add some C2FARM-specifics 
+    demo_augmentation:      ${method.demo_augmentation}
+    demo_augmentation_every_n: ${method.demo_augmentation_every_n}
+    rlbench_scene_bounds:   ${rlbench.scene_bounds}
+    voxel_sizes:            ${method.voxel_sizes}
+    bounds_offset:          ${method.bounds_offset}
+    rotation_resolution:    ${method.rotation_resolution}
+    crop_augmentation:      ${method.crop_augmentation}
+    
+
+framework:
+    log_freq: 10
+    save_freq: 10000
+    n_train: 1
+    n_eval: 1
+    replay_ratio: 64 #128
+    transitions_before_train: 100
+    tensorboard_logging: False
+    csv_logging: True
+    training_iterations: 5000
+    gpu: 0
+    logdir: '/home/mandi/ARM/log/'
+    seeds: 1
+    replay_sample_rates: [1.0]
+
+env_runner:
+    n_train:    ${framework.n_train}
+    n_eval:     ${framework.n_eval}
+    episodes:   500 #99999
+    episode_length: ${rlbench.episode_length}
+    max_fails:  2
+    use_gpu: True
+
+load: True
+load_dir: ??? 
+load_step: 14000
+
+trainer:
+    task_per_batch: 3
+    iterations: ${framework.training_iterations}
+    logdir:     ${framework.logdir}
+    log_freq:   ${framework.log_freq}
+    
+    
+defaults:
+    - method: C2FARM
+
+log_path: ??? 
+short_names: ???
+hydra:
+    run:
+        dir: ${framework.logdir}/ #${rlbench.task}/${method.name}

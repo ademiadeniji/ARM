@@ -47,6 +47,10 @@ python(_PyMethodDef_RawFastCallKeywords+0x1df)[0x5600e58a8def]
 
 ```
 solve by running the sudo X section
+2. cv2 is dangerous 
+```
+pip3 install opencv-python==4.1.2.30
+```
 
 ## Installation (on RLL servers)
 ```

@@ -1,7 +1,7 @@
 import csv
 import logging
 import os
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict, defaultdict, deque 
 
 import numpy as np
 import torch
@@ -11,6 +11,7 @@ from yarr.agents.agent import Summary, ScalarSummary, HistogramSummary, ImageSum
 from multiprocessing import Lock
 from typing import List
 from yarr.utils.transition import ReplayTransition
+  
 
 import wandb 
 
@@ -27,18 +28,15 @@ class WandbLogWriter(object):
         self._curr_image = None
 
     def add_scalar(self, i, name, value):  
- 
-        if len(self._row_data) == 0:
-            self._row_data['step'] = i
+        self._row_data['step'] = i
         self._row_data[name] = value.item() if isinstance(
             value, torch.Tensor) else value
 
     def add_scalar_dict(self, i, scalar_dict):
-        if len(self._row_data) == 0:
-            self._row_data['step'] = i
+        #if len(self._row_data) == 0:
+        self._row_data['step'] = i
         for name, value in scalar_dict.items(): 
             self._row_data[name] = value.item() if isinstance(value, torch.Tensor) else value
-
 
     def add_summaries(self, i, summaries):
         for summary in summaries:
@@ -67,32 +65,34 @@ class WandbLogWriter(object):
                 logging.error('Error on summary: %s' % summary.name)
                 raise e
 
-    def end_iteration(self):
+    def end_iteration(self, itr):
+        #print(f'Debugging logger: ending writer iter at {itr}, row data:', self._row_data.keys())
+            
         if len(self._row_data) > 0:
-            with open(self._csv_file, mode='a+') as csv_f:
-                names = self._row_data.keys() #or self._field_names  
-                #print(self._field_names, self._row_data.keys())
-                #print(np.array_equal(self._field_names, self._row_data.keys()))
-                writer = csv.DictWriter(csv_f, fieldnames=names)
-                if self._field_names is None:
-                    writer.writeheader()
-                else:
-                    if not np.array_equal(self._field_names, self._row_data.keys()):
-                        # Special case when we are logging faster than new
-                        # summaries are coming in.
-                        missing_keys = list(set(self._field_names) - set(
-                            self._row_data.keys()))
-                        for mk in missing_keys:
-                            self._row_data[mk] = self._prev_row_data[mk]
-                self._field_names = names
-                #hack
-                 
-                writer.writerow(self._row_data)
+            assert itr == self._row_data['step'], 'iteration must equal logged data steps'
+            # with open(self._csv_file, mode='a+') as csv_f:
+            #     names = self._row_data.keys() #or self._field_names  
+            #     #print(self._field_names, self._row_data.keys())
+            #     #print(np.array_equal(self._field_names, self._row_data.keys()))
+            #     writer = csv.DictWriter(csv_f, fieldnames=names)
+            #     if self._field_names is None:
+            #         writer.writeheader()
+            #     else:
+            #         if not np.array_equal(self._field_names, self._row_data.keys()):
+            #             # Special case when we are logging faster than new
+            #             # summaries are coming in.
+            #             missing_keys = list(set(self._field_names) - set(
+            #                 self._row_data.keys()))
+            #             for mk in missing_keys:
+            #                 self._row_data[mk] = self._prev_row_data[mk]
+            #     self._field_names = names
+            #     #hack 
+            #     writer.writerow(self._row_data)
 
             wandb.log(self._row_data)
-            if self._curr_image is not None:
-                (itr, img) = self._curr_image
-                wandb.log({'image-itr': itr, 'image': wandb.Image(img)})
+            # if self._curr_image is not None:
+            #     (itr, img) = self._curr_image
+            #     wandb.log({'image-itr': itr, 'image': wandb.Image(img)})
 
             self._prev_row_data = self._row_data
             self._row_data = OrderedDict()
@@ -101,14 +101,6 @@ class WandbLogWriter(object):
         # if self._tensorboard_logging:
         #     self._tf_writer.close()
         return 
-
-from multiprocessing import Lock
-from typing import List
-
-import numpy as np
-from yarr.agents.agent import Summary, ScalarSummary
-from yarr.utils.transition import ReplayTransition
-
 
 class Metric(object):
 
@@ -147,24 +139,64 @@ class Metric(object):
     def __getitem__(self, i):
         return self._previous[i]
 
+class MetricQueue(object):
+    """Let's try using a queue to only take average of a fixed length value arrays"""
+    def __init__(self, maxlen=10):
+        self._previous = deque([0], maxlen)
+        self._maxlen = maxlen 
+        self._current = 0
+
+    def update(self, value):
+        self._current += value
+
+    def next(self):
+        self._previous.append(self._current)
+        self._current = 0
+
+    def reset(self):
+        self._previous.clear()
+
+    def min(self):
+        return np.min(self._previous)
+
+    def max(self):
+        return np.max(self._previous)
+
+    def mean(self):
+        if len(self._previous) < self._maxlen:
+            return -100
+        return np.mean(self._previous)
+
+    def median(self):
+        return np.median(self._previous)
+
+    def std(self):
+        return np.std(self._previous)
+
+    def __len__(self):
+        return len(self._previous)
+
+    def __getitem__(self, i):
+        return self._previous[i]
+
 
 class _SimpleAccumulator(object):
 
     def __init__(self, prefix, eval_video_fps: int = 30,
-                 mean_only: bool = True):
+                 mean_only: bool = True, maxlen: int = 10):
         self._prefix = prefix
         self._eval_video_fps = eval_video_fps
         self._mean_only = mean_only
         self._lock = Lock()
-        self._episode_returns = Metric()
-        self._episode_lengths = Metric()
+        self._episode_returns = MetricQueue(maxlen) # Metric()
+        self._episode_lengths = MetricQueue(maxlen) #Metric()
         self._summaries = []
         self._transitions = 0
 
     def _reset_data(self):
         with self._lock:
-            self._episode_returns.reset()
-            self._episode_lengths.reset()
+            #self._episode_returns.reset()
+            #self._episode_lengths.reset()
             self._summaries.clear()
 
     def step(self, transition: ReplayTransition, eval: bool):
@@ -176,6 +208,8 @@ class _SimpleAccumulator(object):
                 self._episode_returns.next()
                 self._episode_lengths.next()
             self._summaries.extend(list(transition.summaries))
+            #print(f"Debugging logger: prefix-{self._prefix}, transitions {self._transitions}, transition task: {transition.info['task_name']}, \
+                #returns len: {len(self._episode_returns._previous)} current mean of returns:", self._episode_returns.mean())
 
     def _get(self) -> List[Summary]:
         sums = []
@@ -202,9 +236,9 @@ class _SimpleAccumulator(object):
 
     def pop(self) -> List[Summary]:
         data = []
-        if len(self._episode_returns) > 1:
-            data = self._get()
-            self._reset_data()
+        # if len(self._episode_returns) > 1:
+        data = self._get()
+        self._reset_data()
         return data
 
     def peak(self) -> List[Summary]:
