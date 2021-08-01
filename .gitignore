@@ -8,3 +8,9 @@ venv
 nvidia-persistenced/
 results/
 rlight.egg-info
+
+# Mandi(New):
+data/
+log/
+nohup.out
+wandb/
