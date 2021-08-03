@@ -30,18 +30,30 @@ framework:
     transitions_before_train: 100
     tensorboard_logging: True
     csv_logging: False
-    training_iterations: 100000
+    wandb_logging: False
+    training_iterations: 20000
     gpu: 0
     logdir: '/home/mandi/ARM/log/'
     seeds: 1
+    resume: ${resume}
+    resume_path: ${resume_path}
+    resume_run: ${resume_run}
+    resume_step:  ${resume_step}
+    resume_dir: ''
 
-defaults:
-    - method: C2FARM
+
+resume: False
+resume_path: '/home/mandi/ARM/log/'
+resume_run: '7tasks-cup-lift-phone-rubbish-sauce-target-umbrella/C2FARM-Fresh-Batch126-lr5e-4/seed0' # e.g. 7tasks-cup-lift-phone-rubbish-sauce-target-umbrella/C2FARM-Fresh-Batch126-lr5e-4/seed0
+resume_step: 24300
 
 contexts:
     with_action: False
     context_size: 32 
     pass_down_context: False 
+
+defaults:
+    - method: C2FARM
 
 hydra:
     run:

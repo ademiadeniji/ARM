@@ -162,8 +162,24 @@ def run_seed(cfg: DictConfig, env, cams, device, seed, tasks) -> None:
         weightsdir=weightsdir,
         device_list=device_list)
 
-    # run = wandb.init(project='rlbench', job_type='patched', sync_tensorboard=True)
+    resume_dir = None
+    if cfg.resume:
+        resume_dir = join(cfg.resume_path, cfg.resume_run, 'weights', str(cfg.resume_step))
+        assert os.path.exists(resume_dir), 'Cannot find the weights saved at path: '+resume_dir
+        cfg.framework.resume_dir = resume_dir 
+    
+    if cfg.framework.wandb_logging:
+        run = wandb.init(project='MTARM', job_type='launch')
+        run.name = cfg.log_path
+        cfg_dict = {}
+        for key in ['rlbench', 'replay', 'framework', 'contexts']:
+            for sub_key in cfg[key].keys():
+                cfg_dict[key+'/'+sub_key] = cfg[key][sub_key]
+        run.config.update(cfg_dict)
+        run.save()
 
+
+    
     train_runner = PyTorchTrainRunner(
         agent, env_runner,
         wrapped_replays, device, replay_split, stat_accum,
@@ -175,8 +191,12 @@ def run_seed(cfg: DictConfig, env, cams, device, seed, tasks) -> None:
         replay_ratio=replay_ratio,
         transitions_before_train=cfg.framework.transitions_before_train,
         tensorboard_logging=cfg.framework.tensorboard_logging,
-        csv_logging=cfg.framework.csv_logging)
-    train_runner.start()
+        csv_logging=cfg.framework.csv_logging,
+        wandb_logging=cfg.framework.wandb_logging
+        )
+    
+    
+    train_runner.start(resume_dir)
     del train_runner
     del env_runner
     torch.cuda.empty_cache()
