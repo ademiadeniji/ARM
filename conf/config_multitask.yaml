@@ -9,7 +9,7 @@ rlbench:
     task: take_lid_off_saucepan
     tasks: ${tasks}
     demos: 10
-    demo_path: /home/mandi/_ARM_MultiTask_Example/data
+    demo_path: /home/mandi/ARM/data
     episode_length: 10
     cameras: [front]
     camera_resolution: [128, 128]
@@ -37,6 +37,11 @@ framework:
 
 defaults:
     - method: C2FARM
+
+contexts:
+    with_action: False
+    context_size: 32 
+    pass_down_context: False 
 
 hydra:
     run:

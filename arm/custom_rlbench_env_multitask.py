@@ -1,4 +1,4 @@
- from typing import Type, List
+from typing import Type, List
 
 import numpy as np
 from pyrep.const import RenderMode
