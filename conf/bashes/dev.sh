@@ -1,0 +1,1 @@
+taskset -c 20-40 python launch_multitask.py  tasks='${7_task_wine}' replay.share_across_tasks=True

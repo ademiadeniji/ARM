@@ -21,6 +21,7 @@ replay:
     prioritisation: True
     use_disk: False
     path: '/tmp/arm_sanity/replay'  # Only used when use_disk is True.
+    share_across_tasks: False
 
 framework:
     log_freq: 100
@@ -30,7 +31,7 @@ framework:
     transitions_before_train: 100
     tensorboard_logging: True
     csv_logging: False
-    wandb_logging: False
+    wandb_logging: True
     training_iterations: 20000
     gpu: 0
     logdir: '/home/mandi/ARM/log/'

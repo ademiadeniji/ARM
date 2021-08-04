@@ -111,20 +111,40 @@ def run_seed(cfg: DictConfig, env, cams, device, seed, tasks) -> None:
     action_min_max = None
 
     if cfg.method.name == 'C2FARM':
-        replays = []
-        for task in tasks:
+        if cfg.replay.share_across_tasks:
+            
+            total_size = int(len(tasks) * cfg.replay.batch_size)
+            logging.info(f'New: try using one replay for multiple tasks, one batch size is aggregated to {total_size}')
+            cfg.replay.batch_size = total_size
             r = c2farm.launch_utils.create_replay(
-                cfg.replay.batch_size, cfg.replay.timesteps,
+                total_size, cfg.replay.timesteps,
                 cfg.replay.prioritisation,
                 replay_path if cfg.replay.use_disk else None, cams, env,
                 cfg.method.voxel_sizes)
-            replays.append(r)
-            c2farm.launch_utils.fill_replay(
+            for task in tasks:
+                c2farm.launch_utils.fill_replay(
                 r, task, env, cfg.rlbench.demos,
                 cfg.method.demo_augmentation, cfg.method.demo_augmentation_every_n,
                 cams, cfg.rlbench.scene_bounds,
                 cfg.method.voxel_sizes, cfg.method.bounds_offset,
                 cfg.method.rotation_resolution, cfg.method.crop_augmentation)
+            replays = [r]
+
+        else:
+            replays = []
+            for task in tasks:
+                r = c2farm.launch_utils.create_replay(
+                    cfg.replay.batch_size, cfg.replay.timesteps,
+                    cfg.replay.prioritisation,
+                    replay_path if cfg.replay.use_disk else None, cams, env,
+                    cfg.method.voxel_sizes)
+                replays.append(r)
+                c2farm.launch_utils.fill_replay(
+                    r, task, env, cfg.rlbench.demos,
+                    cfg.method.demo_augmentation, cfg.method.demo_augmentation_every_n,
+                    cams, cfg.rlbench.scene_bounds,
+                    cfg.method.voxel_sizes, cfg.method.bounds_offset,
+                    cfg.method.rotation_resolution, cfg.method.crop_augmentation)
 
         agent = c2farm.launch_utils.create_agent(cfg, env)
     else:
@@ -160,7 +180,8 @@ def run_seed(cfg: DictConfig, env, cams, device, seed, tasks) -> None:
         episode_length=cfg.rlbench.episode_length,
         stat_accumulator=stat_accum,
         weightsdir=weightsdir,
-        device_list=device_list)
+        device_list=device_list,
+        share_buffer_across_tasks=cfg.replay.share_across_tasks)
 
     resume_dir = None
     if cfg.resume:
@@ -179,7 +200,7 @@ def run_seed(cfg: DictConfig, env, cams, device, seed, tasks) -> None:
         run.save()
 
 
-    
+    # trainer doesn't know if this is meta-rl agent 
     train_runner = PyTorchTrainRunner(
         agent, env_runner,
         wrapped_replays, device, replay_split, stat_accum,
