@@ -14,10 +14,12 @@ from yarr.replay_buffer.uniform_replay_buffer import UniformReplayBuffer
 from arm import demo_loading_utils, utils
 from arm.custom_rlbench_env import CustomRLBenchEnv
 from arm.preprocess_agent import PreprocessAgent
-from arm.c2farm.networks import Qattention3DNet
+from arm.c2farm.networks import Qattention3DNet, Qattention3DNetWithContext
 from arm.c2farm.qattention_agent import QAttentionAgent
-from arm.c2farm.qattention_stack_agent import QAttentionStackAgent
-
+from arm.c2farm.qattention_agent_with_context import QAttentionContextAgent
+from arm.c2farm.qattention_stack_agent import QAttentionStackAgent, QAttentionStackContextAgent
+from arm.c2farm.contexts import ContextAgent
+from arm.network_utils import SiameseCNNWithFCModel
 REWARD_SCALE = 100.0
 
 
@@ -261,6 +263,117 @@ def create_agent(cfg: DictConfig, env, depth_0bounds=None, cam_resolution=None):
         qattention_agents=qattention_agents,
         rotation_resolution=cfg.method.rotation_resolution,
         camera_names=cfg.rlbench.cameras,
+    )
+    preprocess_agent = PreprocessAgent(pose_agent=rotation_agent)
+    return preprocess_agent
+
+def create_agent_with_context(cfg: DictConfig, env, 
+        depth_0bounds=None, cam_resolution=None):
+    VOXEL_FEATS = 3
+    LATENT_SIZE = 64
+    depth_0bounds = depth_0bounds or [-0.3, -0.5, 0.6, 0.7, 0.5, 1.6]
+    cam_resolution = cam_resolution or [128, 128]
+
+    include_prev_layer = False
+    
+    # New(Mandi): create context agent here 
+    embedding_net = SiameseCNNWithFCModel(
+        input_shapes=[
+            [(3 * embedding_timesteps) + 
+            (train_env.action_shape[0] * embedding_timesteps if cfg.contexts.with_action else 0),
+            cam_resolution[0], cam_resolution[1]]
+                ] * 2,
+        filters=[64, 64, 64],
+        kernel_sizes=[3, 3, 3],
+        strides=[2, 2, 2],
+        pre_filters=[32],
+        pre_kernel_sizes=[3],
+        pre_strides=[1],
+        norm=None if 'None' in cfg.method.norm else cfg.method.norm,
+        activation=cfg.method.activation, # same as c2farm
+        fc_layers=[64, 64, embedding_size]
+        )
+    
+    # context_agent = ContextAgent(
+    #     embedding_net=embedding_net, 
+    #     camera_names=cfg.rlbench.cameras,
+    #     with_action_context=cfg.contexts.with_action,
+    #     is_train: bool = True,
+    #     # for traintime:
+    #     embedding_size=cfg.contexts.context_size,
+    #     num_support: int, # for TecNet
+    #     num_query: int,   
+    #     margin: float = 0.1,
+    #     emb_lambda: float = 1.0,
+    #     save_context: bool = False, 
+    #     loss_mode: str = 'hinge', 
+    #     prod_of_gaus_factors_over_batch: bool = False, # for PEARL 
+    #     )
+
+    num_rotation_classes = int(360. // cfg.method.rotation_resolution)
+    qattention_agents = []
+    for depth, vox_size in enumerate(cfg.method.voxel_sizes):
+        if depth == 0:
+            unet3d = Qattention3DNetWithContext(
+                in_channels=VOXEL_FEATS + 3 + 1 + 3,
+                out_channels=1,
+                voxel_size=vox_size,
+                out_dense=0,
+                kernels=LATENT_SIZE,
+                norm=None if 'None' in cfg.method.norm else cfg.method.norm,
+                dense_feats=128,
+                activation=cfg.method.activation,
+                low_dim_size=env.low_dim_state_len,
+                context_size=cfg.contexts.context_size,
+                )
+        else:
+            last = depth == len(cfg.method.voxel_sizes) - 1
+            unet3d = Qattention3DNetWithContext(
+                in_channels=VOXEL_FEATS + 3 + 1 + 3,
+                out_channels=2,
+                voxel_size=vox_size,
+                out_dense=(num_rotation_classes * 3) if last else 0,
+                kernels=LATENT_SIZE,
+                dense_feats=128,
+                norm=None if 'None' in cfg.method.norm else cfg.method.norm,
+                activation=cfg.method.activation,
+                low_dim_size=env.low_dim_state_len,
+                include_prev_layer=include_prev_layer,
+                context_size=LATENT_SIZE if cfg.contexts.pass_down_context else cfg.contexts.context_size 
+                )
+
+        qattention_agent = QAttentionContextAgent(
+            layer=depth,
+            coordinate_bounds=depth_0bounds,
+            unet3d=unet3d,
+            camera_names=cfg.rlbench.cameras,
+            voxel_size=vox_size,
+            bounds_offset=cfg.method.bounds_offset[depth - 1] if depth > 0 else None,
+            image_crop_size=cfg.method.image_crop_size,
+            tau=cfg.method.tau,
+            lr=cfg.method.lr,
+            lambda_trans_qreg=cfg.method.lambda_trans_qreg,
+            lambda_rot_qreg=cfg.method.lambda_rot_qreg,
+            include_low_dim_state=True,
+            image_resolution=cam_resolution,
+            batch_size=cfg.replay.batch_size,
+            voxel_feature_size=3,
+            exploration_strategy=cfg.method.exploration_strategy,
+            lambda_weight_l2=cfg.method.lambda_weight_l2,
+            num_rotation_classes=num_rotation_classes,
+            rotation_resolution=cfg.method.rotation_resolution,
+            grad_clip=0.01,
+            gamma=0.99
+        )
+        qattention_agents.append(qattention_agent)
+
+    rotation_agent = QAttentionStackContextAgent(
+        context_agent=context_agent,
+        pass_down_context=cfg.contexts.pass_down_context,
+        qattention_agents=qattention_agents,
+        rotation_resolution=cfg.method.rotation_resolution,
+        camera_names=cfg.rlbench.cameras,
+        rotation_prediction_depth=0,
     )
     preprocess_agent = PreprocessAgent(pose_agent=rotation_agent)
     return preprocess_agent

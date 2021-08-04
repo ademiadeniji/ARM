@@ -1,13 +1,12 @@
 import copy
-from typing import List, Union
+from typing import List, Union, Tuple
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-LRELU_SLOPE = 0.02
-
+LRELU_SLOPE = 0.02 
 
 def act_layer(act):
     if act == 'relu':
@@ -395,3 +394,78 @@ class SpatialSoftmax3D(torch.nn.Module):
         expected_xy = torch.cat([expected_x, expected_y, expected_z], 1)
         feature_keypoints = expected_xy.view(-1, self.channel * 3)
         return feature_keypoints
+
+class SiameseCNNModel(nn.Module):
+    """Note(Mandi): migrated from QAttentionMultitask, use this for context embedder"""
+    def __init__(self,
+                 input_shapes: List[List[int]],
+                 pre_filters: List[int],
+                 pre_kernel_sizes: List[int],
+                 pre_strides: List[int],
+                 filters: List[int],
+                 kernel_sizes: List[int],
+                 strides: List[int],
+                 norm: str = None,
+                 activation: str = 'relu',
+                 activation_on_last: str = None):
+        super(SiameseCNNModel, self).__init__()
+        self._input_shapes = input_shapes
+        self._pre_filters = pre_filters
+        self._pre_kernel_sizes = pre_kernel_sizes
+        self._pre_strides = pre_strides
+        self._filters = filters
+        self._kernel_sizes = kernel_sizes
+        self._strides = strides
+        self._norm = norm
+        self._activation = activation
+        self._activation_on_last = activation_on_last
+        self._build_calls = 0
+
+    def build(self):
+        self._build_calls += 1
+        if self._build_calls != 1:
+            raise RuntimeError('Build needs to be called once.')
+        self._siamese_block = SiameseBlock(
+            self._input_shapes, self._pre_filters, self._pre_kernel_sizes,
+            self._pre_strides, self._norm, self._activation)
+        self._cnn = CNNTrunkBlock(
+            self._siamese_block.out_shape, self._filters, self._kernel_sizes,
+            self._strides, self._norm, self._activation,
+            self._activation_on_last)
+
+    def forward(self, x):
+        y = self._cnn(self._siamese_block(x))
+        self.streams = self._siamese_block.streams
+        return y
+
+
+class SiameseCNNWithFCModel(SiameseCNNModel):
+
+    def __init__(self,
+                 input_shapes: List[List[int]],
+                 pre_filters: List[int],
+                 pre_kernel_sizes: List[int],
+                 pre_strides: List[int],
+                 filters: List[int],
+                 kernel_sizes: List[int],
+                 strides: List[int],
+                 fc_layers: List[int],
+                 norm: str = None,
+                 activation: str = 'relu'):
+        super(SiameseCNNWithFCModel, self).__init__(
+            input_shapes, pre_filters, pre_kernel_sizes, pre_strides,
+            filters, kernel_sizes, strides, norm, activation, activation
+        )
+        self._maxp = nn.AdaptiveMaxPool2d(1)
+        self._mlp = MLPModel(
+            filters[-1], fc_layers, activation, None, None)
+
+    def build(self):
+        super(SiameseCNNWithFCModel, self).build()
+        self._mlp.build()
+
+    def forward(self, x):
+        y = super(SiameseCNNWithFCModel, self).forward(x)
+        y = self._maxp(y).squeeze(-1).squeeze(-1)
+        y = self._mlp(y)
+        return y

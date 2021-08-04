@@ -43,11 +43,6 @@ framework:
     resume_dir: ''
 
 
-
-
-defaults:
-    - method: C2FARM
-
 resume: False
 resume_path: '/home/mandi/ARM/log/'
 resume_run: '7tasks-cup-lift-phone-rubbish-sauce-target-umbrella/C2FARM-Fresh-Batch126-lr5e-4/seed0' # e.g. 7tasks-cup-lift-phone-rubbish-sauce-target-umbrella/C2FARM-Fresh-Batch126-lr5e-4/seed0
@@ -57,6 +52,9 @@ contexts:
     with_action: False
     context_size: 32 
     pass_down_context: False 
+
+defaults:
+    - method: C2FARM
 
 hydra:
     run:
