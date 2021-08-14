@@ -14,3 +14,4 @@ data/
 log/
 nohup.out
 wandb/
+*.mp4

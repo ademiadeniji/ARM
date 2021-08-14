@@ -32,18 +32,25 @@ from os.path import join
 import wandb 
 
 SHORT_NAMES = {
-    'pick_up_cup':          'cup',
-    'phone_on_base':        'phone',
-    'pick_and_lift':        'lift',
-    'put_rubbish_in_bin':   'rubbish',
-    'reach_target':         'target',
-    'stack_wine':           'wine', 
-    'take_lid_off_saucepan': 'sauce',
+    'pick_up_cup':              'cup',
+    'phone_on_base':            'phone',
+    'pick_and_lift':            'lift',
+    'put_rubbish_in_bin':       'rubbish',
+    'reach_target':             'target',
+    'stack_wine':               'wine', 
+    'take_lid_off_saucepan':    'sauce',
     'take_umbrella_out_of_umbrella_stand': 'umbrella',
-    'meat_off_grill':       'grill',
+    'meat_off_grill':           'grill',
     'put_groceries_in_cupboard': 'grocery',
-    'take_money_out_safe':  'safe',
-    'unplug_charger':       'charger'
+    'take_money_out_safe':      'safe',
+    'unplug_charger':           'charger',
+    'open_door':                'door', ## testing water to see if these are solvable 
+    'take_off_weighing_scales': 'scales',
+    'hit_ball_with_queue':      'queue',
+    'press_switch':             'switch',
+    'open_box':                 'box',
+    'light_bulb_out':           'bulb'
+
 }
 
 def _gen_short_names(cfg: DictConfig): # just for logging dirs
@@ -190,7 +197,8 @@ def run_seed(cfg: DictConfig, env, cams, device, seed, tasks) -> None:
         cfg.framework.resume_dir = resume_dir 
     
     if cfg.framework.wandb_logging:
-        run = wandb.init(project='MTARM', job_type='launch')
+        print('Initializing wandb run with keywords:', cfg.wandb)
+        run = wandb.init(project='MTARM', **cfg.wandb)
         run.name = cfg.log_path
         cfg_dict = {}
         for key in ['rlbench', 'replay', 'framework', 'contexts']:
@@ -205,7 +213,6 @@ def run_seed(cfg: DictConfig, env, cams, device, seed, tasks) -> None:
         agent, env_runner,
         wrapped_replays, device, replay_split, stat_accum,
         iterations=cfg.framework.training_iterations,
-        save_freq=cfg.framework.log_freq, 
         log_freq=cfg.framework.log_freq, 
         logdir=logdir,
         weightsdir=weightsdir,
@@ -213,7 +220,8 @@ def run_seed(cfg: DictConfig, env, cams, device, seed, tasks) -> None:
         transitions_before_train=cfg.framework.transitions_before_train,
         tensorboard_logging=cfg.framework.tensorboard_logging,
         csv_logging=cfg.framework.csv_logging,
-        wandb_logging=cfg.framework.wandb_logging
+        wandb_logging=cfg.framework.wandb_logging,
+        save_freq=cfg.dev.save_freq,
         )
     
     

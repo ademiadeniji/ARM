@@ -1,0 +1,16 @@
+
+tasks: [stack_wine]
+7_task_wine:    [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,reach_target,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
+7_task_target: [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
+7_task_phone: [pick_up_cup,stack_wine,pick_and_lift,put_rubbish_in_bin,reach_target,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
+
+resume_path: '/home/mandi/ARM/log/'
+resume_run: '7tasks-cup-lift-rubbish-sauce-target-umbrella-wine/C2FARM-Fresh-Batch63-lr5e4-Network3x16/seed0'
+resume_step: 26000
+
+vid_name: 'unnamed'
+
+episodes: 1
+q_thres: 0.75 
+rlbench:
+  cameras: [front]

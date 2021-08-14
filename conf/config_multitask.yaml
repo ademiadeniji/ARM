@@ -1,6 +1,8 @@
 7_task_wine:    [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,reach_target,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
 7_task_target: [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,stack_wine,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
 7_task_phone: [pick_up_cup,stack_wine,pick_and_lift,put_rubbish_in_bin,reach_target,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
+7_task_cup: [phone_on_base,stack_wine,pick_and_lift,put_rubbish_in_bin,reach_target,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
+
 tasks: ???
 short_names: ??? 
 run_name: burn 
@@ -32,7 +34,7 @@ framework:
     tensorboard_logging: True
     csv_logging: False
     wandb_logging: True
-    training_iterations: 20000
+    training_iterations: 50000
     gpu: 0
     logdir: '/home/mandi/ARM/log/'
     seeds: 1
@@ -48,6 +50,9 @@ resume_path: '/home/mandi/ARM/log/'
 resume_run: '7tasks-cup-lift-phone-rubbish-sauce-target-umbrella/C2FARM-Fresh-Batch126-lr5e-4/seed0' # e.g. 7tasks-cup-lift-phone-rubbish-sauce-target-umbrella/C2FARM-Fresh-Batch126-lr5e-4/seed0
 resume_step: 24300
 
+dev:
+    q_thres: 0.75 
+    save_freq: 100
 contexts:
     with_action: False
     context_size: 32 
@@ -56,6 +61,9 @@ contexts:
 defaults:
     - method: C2FARM
 
+wandb:
+    job_type: 'launch'
+    group:    'single'
 hydra:
     run:
         dir: ${framework.logdir}/ #${rlbench.task}/${method.name}
