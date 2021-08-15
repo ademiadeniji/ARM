@@ -45,7 +45,7 @@ SHORT_NAMES = {
     'take_money_out_safe':      'safe',
     'unplug_charger':           'charger', ## testing water to see if everything below are solvable via single camera 
     'open_door':                'door',  # yes 
-    'take_off_weighing_scales': 'scales', # no, 10%
+    'take_off_weighing_scales': 'scales', # no, 10% errors out after 2000 steps: rlbench.task_environment.TaskEnvironmentError: Could not place the task take_off_weighing_scales in the scene. This should not happen, please raise an issues on this task.
     'hit_ball_with_queue':      'queue', # no, 10%
     'press_switch':             'switch', # no,
     'open_box':                 'box',   # no, ~10%
@@ -57,10 +57,18 @@ SHORT_NAMES = {
     'open_drawer':              'drawer', # no, ~0% (wrong camera?)
     'beat_the_buzz':            'buzz',
     'open_fridge':              'fridge', # no, ~0%
-    'take_usb_out_of_computer': 'usb',  # yes, >90%
-    'push_buttons':             'buttons',
-    'change_channel':           'channel'
-
+    'take_usb_out_of_computer': 'usb',    # yes, >90%
+    'push_buttons':             'buttons', # yes! >~100%
+    'change_channel':           'channel',  # no, ~0%
+    'reach_and_drag':           'drag',
+    'close_laptop_lid':        'laptop',    # yes, 70%
+    'open_oven':                'open',   # no, ~0%
+    'slide_cabinet_open_and_place_cups': 'cabinet',
+    'put_shoes_in_box':         'shoes',
+    'open_jar':                 'jar',
+    'put_tray_in_oven':         'tray',
+    'plug_charger_in_power_supply': 'charger',
+    'set_the_table':            'table'
 }
 
 def _gen_short_names(cfg: DictConfig): # just for logging dirs
