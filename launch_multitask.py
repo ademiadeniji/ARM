@@ -43,13 +43,23 @@ SHORT_NAMES = {
     'meat_off_grill':           'grill',
     'put_groceries_in_cupboard': 'grocery',
     'take_money_out_safe':      'safe',
-    'unplug_charger':           'charger',
-    'open_door':                'door', ## testing water to see if these are solvable 
-    'take_off_weighing_scales': 'scales',
-    'hit_ball_with_queue':      'queue',
-    'press_switch':             'switch',
-    'open_box':                 'box',
-    'light_bulb_out':           'bulb'
+    'unplug_charger':           'charger', ## testing water to see if everything below are solvable via single camera 
+    'open_door':                'door',  # yes 
+    'take_off_weighing_scales': 'scales', # no, 10%
+    'hit_ball_with_queue':      'queue', # no, 10%
+    'press_switch':             'switch', # no,
+    'open_box':                 'box',   # no, ~10%
+    'light_bulb_out':           'bulb',   # no, floating bulb in the air?
+    'light_bulb_in':            'bulb_in',
+    'put_knife_on_chopping_board': 'knife', # yes
+    'straighten_rope':          'rope', # NO 
+    'hockey':                   'hockey',
+    'open_drawer':              'drawer', # no, ~0% (wrong camera?)
+    'beat_the_buzz':            'buzz',
+    'open_fridge':              'fridge', # no, ~0%
+    'take_usb_out_of_computer': 'usb',  # yes, >90%
+    'push_buttons':             'buttons',
+    'change_channel':           'channel'
 
 }
 
