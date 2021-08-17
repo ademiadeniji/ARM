@@ -255,7 +255,8 @@ def create_agent(cfg: DictConfig, env, depth_0bounds=None, cam_resolution=None):
             num_rotation_classes=num_rotation_classes,
             rotation_resolution=cfg.method.rotation_resolution,
             grad_clip=0.01,
-            gamma=0.99
+            gamma=0.99,
+            q_thres=cfg.dev.q_thres if cfg.get('dev', None) else 0.75,
         )
         qattention_agents.append(qattention_agent)
 

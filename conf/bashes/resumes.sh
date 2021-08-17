@@ -1,51 +1,119 @@
-RUN=7tasks-cup-lift-phone-rubbish-sauce-target-umbrella/C2FARM-Fresh-Batch126-lr5e-4/seed0
-STEP=24000
-for DEMO in 1 10 0 
+# RUN=7tasks-cup-lift-phone-rubbish-sauce-target-umbrella/C2FARM-Fresh-Batch126-lr5e-4/seed0
+# STEP=24000
+# for DEMO in 10 0 
+# do
+
+# for BEFORE in 200 #100
+# do
+#     #python launch_multitask.py tasks=['stack_wine']  resume=True run_name=Resume-7Task-Batch64-lr1e4-${DEMO}Demo-${BEFORE}before \
+#     #framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
+#     #resume_run=${RUN} resume_step=${STEP} \
+#     rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=1e-4; 
+
+#     python launch_multitask.py tasks=['stack_wine']  resume=True run_name=Resume-7Task-Batch64-lr2e4-${DEMO}Demo-${BEFORE}before \
+#     framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
+#     resume_run=${RUN} resume_step=${STEP} \
+#     rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=2e-4; 
+
+#     python launch_multitask.py tasks=['stack_wine']  resume=True run_name=Resume-7Task-Batch64-lr3e4-${DEMO}Demo-${BEFORE}before \
+#     framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
+#     resume_run=${RUN} resume_step=${STEP} \
+#     rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=3e-4; 
+
+
+#     done
+# done
+
+# RUN=7tasks-cup-lift-rubbish-sauce-target-umbrella-wine/C2FARM-Fresh-Batch63-lr5e4-Network3x16/seed0
+# STEP=26000
+# TASK=phone_on_base
+# for DEMO in 10 1 0 
+# do
+
+# for BEFORE in 200 #100
+# do
+#     # python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-7Task-Batch64-lr1e4-${DEMO}Demo-${BEFORE}before \
+#     # framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
+#     # resume_run=${RUN} resume_step=${STEP} \
+#     # rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=1e-4; 
+
+#     # python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-7Task-Batch64-lr2e4-${DEMO}Demo-${BEFORE}before \
+#     # framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
+#     # resume_run=${RUN} resume_step=${STEP} \
+#     # rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=2e-4; 
+
+#     python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-3x16Network-7Task-Batch64-lr3e4-${DEMO}Demo-${BEFORE}before \
+#     framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
+#     resume_run=${RUN} resume_step=${STEP} \
+#     rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=3e-4 \
+#     method.voxel_sizes=[16,16,16] method.bounds_offset=[0.15,0.15] ;
+
+#     python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-3x16Network-7Task-Batch64-lr5e4-${DEMO}Demo-${BEFORE}before \
+#     framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
+#     resume_run=${RUN} resume_step=${STEP} \
+#     rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=5e-4 \
+#     method.voxel_sizes=[16,16,16] method.bounds_offset=[0.15,0.15] ;
+
+#     done
+# done
+
+# change resume_path=/shared/mandi/rlbench_log to load from different path 
+# RUN=C2FARM-OneBuffer-Batch63-lr5e4/seed0
+# STEP=19900
+# TASK=stack_wine 
+# for DEMO in 10 1
+# do  
+#  for BEFORE in 200 #100
+# do
+#     # python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-7Task-Batch64-lr1e4-${DEMO}Demo-${BEFORE}before \
+#     # framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
+#     # resume_run=${RUN} resume_step=${STEP} \
+#     # rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=1e-4; 
+
+#     # python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-7Task-Batch64-lr2e4-${DEMO}Demo-${BEFORE}before \
+#     # framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
+#     # resume_run=${RUN} resume_step=${STEP} \
+#     # rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=2e-4; 
+#     python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-7Task-Batch64-lr5e4-${DEMO}Demo-${BEFORE}before \
+#     framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
+#     resume_run=${RUN} resume_step=${STEP} \
+#     rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=5e-4  resume_path=/shared/mandi/rlbench_log;
+
+#     python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-7Task-Batch64-lr3e4-${DEMO}Demo-${BEFORE}before \
+#     framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
+#     resume_run=${RUN} resume_step=${STEP} \
+#     rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=3e-4 resume_path=/shared/mandi/rlbench_log;
+
+
+#     done
+# done
+
+
+RUN=7tasks-lift-phone-rubbish-sauce-target-umbrella-wine/C2FARM-OneBuffer-Batch63-lr5e4/seed0
+STEP=49900
+TASK=pick_up_cup 
+for DEMO in 10 1 0
+do  
+ for BEFORE in 200 #100
 do
+    # python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-7Task-Batch64-lr1e4-${DEMO}Demo-${BEFORE}before \
+    # framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
+    # resume_run=${RUN} resume_step=${STEP} \
+    # rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=1e-4; 
 
-for BEFORE in 100 200
-do
-    python launch_multitask.py tasks=['stack_wine']  resume=True run_name=Resume-7Task-Batch64-lr1e4-${DEMO}Demo-${BEFORE}before \
+    # python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-7Task-Batch64-lr2e4-${DEMO}Demo-${BEFORE}before \
+    # framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
+    # resume_run=${RUN} resume_step=${STEP} \
+    # rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=2e-4; 
+    python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-7Task-Batch64-lr5e4-${DEMO}Demo-${BEFORE}before \
     framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
     resume_run=${RUN} resume_step=${STEP} \
-    rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=1e-4; 
-
-    python launch_multitask.py tasks=['stack_wine']  resume=True run_name=Resume-7Task-Batch64-lr2e4-${DEMO}Demo-${BEFORE}before \
-    framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
-    resume_run=${RUN} resume_step=${STEP} \
-    rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=2e-4; 
-
-    python launch_multitask.py tasks=['stack_wine']  resume=True run_name=Resume-7Task-Batch64-lr3e4-${DEMO}Demo-${BEFORE}before \
-    framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
-    resume_run=${RUN} resume_step=${STEP} \
-    rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=3e-4; 
-
-
-    done
-done
-
-RUN=7tasks-cup-lift-rubbish-sauce-target-umbrella-wine/C2FARM-Fresh-Batch63-lr5e4-Network3x16/seed0
-STEP=25000
-TASK=phone_on_base
-for DEMO in 1 10 0 
-do
-
-for BEFORE in 100 200
-do
-    python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-7Task-Batch64-lr1e4-${DEMO}Demo-${BEFORE}before \
-    framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
-    resume_run=${RUN} resume_step=${STEP} \
-    rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=1e-4; 
-
-    python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-7Task-Batch64-lr2e4-${DEMO}Demo-${BEFORE}before \
-    framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
-    resume_run=${RUN} resume_step=${STEP} \
-    rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=2e-4; 
+    rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=5e-4 
 
     python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-7Task-Batch64-lr3e4-${DEMO}Demo-${BEFORE}before \
     framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
     resume_run=${RUN} resume_step=${STEP} \
-    rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=3e-4; 
+    rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=3e-4  
 
 
     done

@@ -113,7 +113,8 @@ class QAttentionAgent(Agent):
                  grad_clip: float = 20.,
                  include_low_dim_state: bool = False,
                  image_resolution: list = None,
-                 lambda_weight_l2: float = 0.0
+                 lambda_weight_l2: float = 0.0,
+                 q_thres: float = 0.75
                  ):
         self._layer = layer
         self._lambda_trans_qreg = lambda_trans_qreg
@@ -141,6 +142,7 @@ class QAttentionAgent(Agent):
         self._rotation_resolution = rotation_resolution
 
         self._name = NAME + '_layer' + str(self._layer)
+        self._visualize_q_thres = q_thres 
 
     def build(self, training: bool, device: torch.device = None):
         if device is None:
@@ -475,7 +477,10 @@ class QAttentionAgent(Agent):
                          transforms.ToTensor()(visualise_voxel(
                              self._act_voxel_grid.cpu().numpy(),
                              self._act_qvalues.cpu().numpy(),
-                             self._act_max_coordinate.cpu().numpy())))]
+                             self._act_max_coordinate.cpu().numpy(),
+                             q_thres=self._visualize_q_thres,
+                             )
+                             ))]
 
     def load_weights(self, savedir: str):
         self._q.load_state_dict(

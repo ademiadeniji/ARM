@@ -34,7 +34,7 @@ framework:
     tensorboard_logging: True
     csv_logging: False
     wandb_logging: True
-    training_iterations: 50000
+    training_iterations: 5000
     gpu: 0
     logdir: '/home/mandi/ARM/log/'
     seeds: 1

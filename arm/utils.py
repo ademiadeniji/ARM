@@ -131,7 +131,9 @@ def create_voxel_scene(
         highlight_alpha: float = 1.0,
         voxel_size: float = 0.1,
         show_bb: bool = False,
-        alpha: float = 0.5):
+        alpha: float = 0.5,
+        q_thres: float = 0.75,
+        ):
     _, d, h, w = voxel_grid.shape
     v = voxel_grid.transpose((1, 2, 3, 0))
     occupancy = v[:, :, :, -1] != 0
@@ -141,7 +143,7 @@ def create_voxel_scene(
     if q_attention is not None:
         q = np.max(q_attention, 0)
         q = q / np.max(q)
-        show_q = (q > 0.75)
+        show_q = (q > q_thres)
         occupancy = (show_q + occupancy).astype(bool)
         q = np.expand_dims(q - 0.5, -1)  # Max q can be is 0.9
         q_rgb = np.concatenate([
@@ -152,7 +154,8 @@ def create_voxel_scene(
     if highlight_coordinate is not None:
         x, y, z = highlight_coordinate
         occupancy[x, y, z] = True
-        rgb[x, y, z] = [1.0, 0.0, 0.0, highlight_alpha]
+        # rgb[x, y, z] = [1.0, 0.0, 0.0, highlight_alpha] # this red
+        rgb[x, y, z] = [0.0, 1.0, 1.0, highlight_alpha]
 
     transform = trimesh.transformations.scale_and_translate(
         scale=voxel_size, translate=(0.0, 0.0, 0.0))
@@ -175,10 +178,12 @@ def visualise_voxel(voxel_grid: np.ndarray,
                     show: bool = False,
                     voxel_size: float = 0.1,
                     offscreen_renderer: pyrender.OffscreenRenderer = None,
-                    show_bb: bool = False):
+                    show_bb: bool = False,
+                    q_thres: float = 0.75,
+                    ):
     scene = create_voxel_scene(
         voxel_grid, q_attention, highlight_coordinate,
-        highlight_alpha, voxel_size, show_bb)
+        highlight_alpha, voxel_size, show_bb, q_thres=q_thres)
     if show:
         scene.show()
     else:

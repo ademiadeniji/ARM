@@ -47,7 +47,7 @@ SHORT_NAMES = {
     'open_door':                'door',  # yes 
     'take_off_weighing_scales': 'scales', # no, 10% errors out after 2000 steps: rlbench.task_environment.TaskEnvironmentError: Could not place the task take_off_weighing_scales in the scene. This should not happen, please raise an issues on this task.
     'hit_ball_with_queue':      'queue', # no, 10%
-    'press_switch':             'switch', # no,
+    'press_switch':             'switch', # 100before got ~50%
     'open_box':                 'box',   # no, ~10%
     'light_bulb_out':           'bulb',   # no, floating bulb in the air?
     'light_bulb_in':            'bulb_in',
@@ -60,15 +60,21 @@ SHORT_NAMES = {
     'take_usb_out_of_computer': 'usb',    # yes, >90%
     'push_buttons':             'buttons', # yes! >~100%
     'change_channel':           'channel',  # no, ~0%
-    'reach_and_drag':           'drag',
+    'reach_and_drag':           'drag',     # no, ~0%
     'close_laptop_lid':        'laptop',    # yes, 70%
-    'open_oven':                'open',   # no, ~0%
-    'slide_cabinet_open_and_place_cups': 'cabinet',
-    'put_shoes_in_box':         'shoes',
-    'open_jar':                 'jar',
+    'open_oven':                'oven',     # no, ~0%
+    'slide_cabinet_open_and_place_cups': 'cabinet', # no, ~0%
+    'put_shoes_in_box':         'shoes',    # no, ~0%
+    'open_jar':                 'jar',       # no, ~0%
     'put_tray_in_oven':         'tray',
-    'plug_charger_in_power_supply': 'charger',
-    'set_the_table':            'table'
+    'plug_charger_in_power_supply': 'charger', # no, ~0%
+    'set_the_table':            'table',     # no, ~0%
+    'setup_checkers':           'checkers',
+    'wipe_desk':                'desk',
+    'remove_cups':              'remove',
+    'put_money_in_safe':        'safe',  # no, ~10%
+    'put_plate_in_colored_dish_rack':   'rack', # erroed out:  % self._task.get_name()) from e rlbench.task_environment.TaskEnvironmentError: Could not place the task put_plate_in_colored_dish_rack in the scene. 
+    'stack_cups':               'scups',
 }
 
 def _gen_short_names(cfg: DictConfig): # just for logging dirs
