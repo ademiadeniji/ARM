@@ -12,7 +12,9 @@ rlight.egg-info
 # Mandi(New):
 data/
 log/
+cxt_log/
 nohup.out
 wandb/
 *.mp4
+*.html
 outputs/

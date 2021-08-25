@@ -22,6 +22,13 @@ Now install project requirements:
 pip install -r requirements.txt
 ```
 
+New: for Slow resnets
+- [fvcore](https://github.com/facebookresearch/fvcore/): `pip install 'git+https://github.com/facebookresearch/fvcore'`
+
+- `pip install einops MulticoreTSNE pandas bokeh`
+- `conda install jupyter`
+
+
 ## Running experiments
 
 Be sure to have RLBench demos saved on your machine before proceeding. To generate demos for a task, go to the 

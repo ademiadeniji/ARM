@@ -1,0 +1,54 @@
+
+train: 
+  epochs:    50
+  log_freq:  50
+  log_dir:    '/home/mandi/ARM/cxt_log/'
+  log_path:   ???
+  run_name:  'burn'
+  save_freq:  500
+  use_cpu:    False # in case pabti1 not behaving 
+  loss_type:  "hinge"
+
+  
+dataset:
+  image_size:                 [128, 128]
+  root_dir:                   '/home/mandi/all_rlbench_data'
+  num_variations_per_task:    -1 # loads all vars
+  num_episodes_per_variation: 20 # up to 20
+  num_steps_per_episode:      2 # 1, 2 for now  
+  exclude_tasks:              []
+  data_augs:   
+    grayscale:        0
+    strong_jitter:    0 
+    weak_crop_scale:  [0.7, 0.9]
+    weak_crop_ratio:  [0.9, 1]
+  split:              [0.9, 0.1] # train/val split
+
+sampler:
+  batch_dim:             10     # dimension 'B'
+  samples_per_variation: 3      # dimension 'N' 
+  drop_last:             True 
+  sample_mode:           'variation' # or 'variation'
+
+val_sampler:
+  batch_dim:             ${sampler.batch_dim}     # dimension 'B'
+  samples_per_variation: 2      # dimension 'N' 
+  drop_last:             True 
+  sample_mode:           'variation' # or 'variation'
+
+
+hinge_cfg:
+  num_support: 2 
+  num_query:   1
+  margin:      1
+  emb_lambda:  1
+
+defaults:
+  - encoder: SlowRes
+wandb:
+    job_type: 'train'
+    group:    'context'
+
+hydra:
+    run:
+        dir: ${train.log_dir}/ #${rlbench.task}/${method.name}

@@ -47,7 +47,7 @@ SHORT_NAMES = {
     'open_door':                'door',  # yes 
     'take_off_weighing_scales': 'scales', # no, 10% errors out after 2000 steps: rlbench.task_environment.TaskEnvironmentError: Could not place the task take_off_weighing_scales in the scene. This should not happen, please raise an issues on this task.
     'hit_ball_with_queue':      'queue', # no, 10%
-    'press_switch':             'switch', # 100before got ~50%
+    'press_switch':             'switch', # 100before got ~50%, 2cameras got 80%
     'open_box':                 'box',   # no, ~10%
     'light_bulb_out':           'bulb',   # no, floating bulb in the air?
     'light_bulb_in':            'bulb_in',
@@ -71,10 +71,14 @@ SHORT_NAMES = {
     'set_the_table':            'table',     # no, ~0%
     'setup_checkers':           'checkers',
     'wipe_desk':                'desk',
-    'remove_cups':              'remove',
+    'remove_cups':              'remove', # 50before got better
     'put_money_in_safe':        'safe',  # no, ~10%
     'put_plate_in_colored_dish_rack':   'rack', # erroed out:  % self._task.get_name()) from e rlbench.task_environment.TaskEnvironmentError: Could not place the task put_plate_in_colored_dish_rack in the scene. 
     'stack_cups':               'scups',
+    'put_item_in_drawer':       'pdrawer',
+    'put_bottle_in_fridge':  'pfridge',
+    'hannoi_square':            'hannoi',
+    'take_frame_off_hanger':    'hanger',
 }
 
 def _gen_short_names(cfg: DictConfig): # just for logging dirs

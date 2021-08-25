@@ -33,7 +33,7 @@ DEM=10
 BEF=200
 for BEF in 100 50   
 do
-    for TASK in remove_cups # ut_plate_in_colored_dish_rack # setup_checkers wipe_desk #put_tray_in_oven
+    for TASK in take_frame_off_hanger #hannoi_square #stack_cups # ut_plate_in_colored_dish_rack # setup_checkers wipe_desk #put_tray_in_oven
 
     do
         python launch_multitask.py tasks=[${TASK}] run_name=Scratch-Batch64-lr5e4-${DEM}Demo-${BEF}before \

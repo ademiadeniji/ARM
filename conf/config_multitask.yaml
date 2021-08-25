@@ -8,7 +8,7 @@ short_names: ???
 run_name: burn 
 log_path: ??? 
 rlbench:
-    task: take_lid_off_saucepan
+    task: ''
     tasks: ${tasks}
     demos: 10
     demo_path: /home/mandi/ARM/data
@@ -47,7 +47,7 @@ framework:
 
 resume: False
 resume_path: '/home/mandi/ARM/log/'
-resume_run: '7tasks-cup-lift-phone-rubbish-sauce-target-umbrella/C2FARM-Fresh-Batch126-lr5e-4/seed0' # e.g. 7tasks-cup-lift-phone-rubbish-sauce-target-umbrella/C2FARM-Fresh-Batch126-lr5e-4/seed0
+resume_run: ''
 resume_step: 24300
 
 dev:

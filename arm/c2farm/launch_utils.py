@@ -159,7 +159,6 @@ def _add_keypoints_to_replay(
     obs_dict_tp1.update(final_obs)
     replay.add_final(**obs_dict_tp1)
 
-
 def fill_replay(replay: ReplayBuffer,
                 task: str,
                 env: CustomRLBenchEnv,
@@ -196,7 +195,6 @@ def fill_replay(replay: ReplayBuffer,
                 rlbench_scene_bounds, voxel_sizes, bounds_offset,
                 rotation_resolution, crop_augmentation)
     logging.info('Replay filled with demos.')
-
 
 def create_agent(cfg: DictConfig, env, depth_0bounds=None, cam_resolution=None):
     VOXEL_FEATS = 3
@@ -293,7 +291,7 @@ def create_agent_with_context(cfg: DictConfig, env,
         norm=None if 'None' in cfg.method.norm else cfg.method.norm,
         activation=cfg.method.activation, # same as c2farm
         fc_layers=[64, 64, embedding_size]
-        )
+        )                
     
     # context_agent = ContextAgent(
     #     embedding_net=embedding_net, 
