@@ -5,52 +5,11 @@ Codebase of Q-attention (within the ARM system) and coarse-to-fine Q-attention (
 - [Q-attention: Enabling Efficient Learning for Vision-based Robotic Manipulation](https://arxiv.org/abs/2105.14829) (ARM system)
 - [Coarse-to-Fine Q-attention: Efficient Learning for Visual Robotic Manipulation via Discretisation](https://arxiv.org/abs/2106.12534) (C2F-ARM system)
 
-![task grid image missing](readme_files/arm_c2farm.png)
 
-Not that C2F-ARM is the better performing system.
-
-useful thread for fetching from origin:
-https://stackoverflow.com/questions/5884784/how-to-pull-remote-branch-from-somebody-elses-repo 
-
-Not 100% needed for install, save for later:
-
-```
-sudo apt install mesa-utils
-# disable QT warning
-export QT_LOGGING_RULES='*.debug=false;qt.qpa.*=false'
-# clean up nvidia-smi
-sudo fuser -v /dev/nvidia*
-# then sudo kill -9 
-```
-
-Errors:
-1. Rendering:
-```
-(arm) mandi@pabamd3:~$ python PyRep/examples/example_baxter_pick_and_pass.py 
-QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-mandi'
-libGL error: No matching fbConfigs or visuals found
-libGL error: failed to load driver: swrast
-
-
-Error: signal 11:
-
-/home/mandi/CoppeliaSim_Edu_V4_1_0_Ubuntu18_04/libcoppeliaSim.so.1(_Z11_segHandleri+0x2b)[0x7f232cb148db]
-/lib/x86_64-linux-gnu/libc.so.6(+0x3ef20)[0x7f233b14af20]
-/lib/x86_64-linux-gnu/libc.so.6(+0xb1646)[0x7f233b1bd646]
-/home/mandi/CoppeliaSim_Edu_V4_1_0_Ubuntu18_04/libcoppeliaSim.so.1(_Z15initGl_ifNeededv+0x116)[0x7f232cc97986]
-/home/mandi/CoppeliaSim_Edu_V4_1_0_Ubuntu18_04/libcoppeliaSim.so.1(_ZN11CMainWindowC2Ev+0x648)[0x7f232cf626f8]
-/home/mandi/CoppeliaSim_Edu_V4_1_0_Ubuntu18_04/libcoppeliaSim.so.1(_ZN3App16createMainWindowEv+0x46)[0x7f232cc89546]
-/home/mandi/CoppeliaSim_Edu_V4_1_0_Ubuntu18_04/libcoppeliaSim.so.1(_Z24simRunSimulator_internalPKciPFvvES2_S2_iS0_b+0x32d)[0x7f232cb29a1d]
-/home/mandi/CoppeliaSim_Edu_V4_1_0_Ubuntu18_04/libcoppeliaSim.so.1(_Z29simExtLaunchUIThread_internalPKciS0_S0_+0x91)[0x7f232cb29e01]
-/home/mandi/miniconda3/envs/arm/lib/python3.7/site-packages/pyrep/backend/_sim_cffi.cpython-37m-x86_64-linux-gnu.so(+0x5926e)[0x7f232d66526e]
-python(_PyMethodDef_RawFastCallKeywords+0x1df)[0x5600e58a8def]
-
-```
-solve by running the sudo X section
 
 ## Installation (on RLL servers)
 ```
-conda create -n arm python=3.7 torch==1.8.1
+conda create -n arm python=3.7 pytorch==1.8.1
 conda activate arm 
 # If starting from scratch: 
 # 1. install CoppeliaSim: 
@@ -86,14 +45,14 @@ pip install -r RLBench/requirements.txt
 pip install RLBench/.
 
 
-git clone git@github.com:stepjam/YARR.git
+git clone git@github.com:MandiZhao/YARR.git # (notice forked repo)
+cd YARR; git checkout dev; cd ..
 pip install -r YARR/requirements.txt
 pip install -e YARR/.
 
-pip install natsort pyquaternion 
+
 git clone git@github.com:rll-research/ARM.git
 pip install -r ARM/requirements.txt
-pip install ARM/.
 # (Mandi) Added data/ and log/ folder, changed default settings in yaml
 cp -r -n /shared/mandi/rlbench_demo/*  ARM/data/
 # test launch
@@ -101,7 +60,40 @@ python launch.py method=C2FARM rlbench.task=stack_wine framework.gpu=0
 
 
 ```
+- Not 100% needed for install, save for later:
+```
+sudo apt install mesa-utils
+# disable QT warning
+export QT_LOGGING_RULES='*.debug=false;qt.qpa.*=false'
+# clean up nvidia-smi
+sudo fuser -v /dev/nvidia*
+# then sudo kill -9 
+pip install natsort pyquaternion 
+```
 
+- Errors:
+1. Rendering:
+```
+(arm) mandi@pabamd3:~$ python PyRep/examples/example_baxter_pick_and_pass.py 
+QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-mandi'
+libGL error: No matching fbConfigs or visuals found
+libGL error: failed to load driver: swrast
+
+Error: signal 11:
+
+/home/mandi/CoppeliaSim_Edu_V4_1_0_Ubuntu18_04/libcoppeliaSim.so.1(_Z11_segHandleri+0x2b)[0x7f232cb148db]
+/lib/x86_64-linux-gnu/libc.so.6(+0x3ef20)[0x7f233b14af20]
+/lib/x86_64-linux-gnu/libc.so.6(+0xb1646)[0x7f233b1bd646]
+/home/mandi/CoppeliaSim_Edu_V4_1_0_Ubuntu18_04/libcoppeliaSim.so.1(_Z15initGl_ifNeededv+0x116)[0x7f232cc97986]
+/home/mandi/CoppeliaSim_Edu_V4_1_0_Ubuntu18_04/libcoppeliaSim.so.1(_ZN11CMainWindowC2Ev+0x648)[0x7f232cf626f8]
+/home/mandi/CoppeliaSim_Edu_V4_1_0_Ubuntu18_04/libcoppeliaSim.so.1(_ZN3App16createMainWindowEv+0x46)[0x7f232cc89546]
+/home/mandi/CoppeliaSim_Edu_V4_1_0_Ubuntu18_04/libcoppeliaSim.so.1(_Z24simRunSimulator_internalPKciPFvvES2_S2_iS0_b+0x32d)[0x7f232cb29a1d]
+/home/mandi/CoppeliaSim_Edu_V4_1_0_Ubuntu18_04/libcoppeliaSim.so.1(_Z29simExtLaunchUIThread_internalPKciS0_S0_+0x91)[0x7f232cb29e01]
+/home/mandi/miniconda3/envs/arm/lib/python3.7/site-packages/pyrep/backend/_sim_cffi.cpython-37m-x86_64-linux-gnu.so(+0x5926e)[0x7f232d66526e]
+python(_PyMethodDef_RawFastCallKeywords+0x1df)[0x5600e58a8def]
+
+```
+solve by running the sudo X section
 
 ARM is trained using the **YARR framework**. Head to the [YARR github](https://github.com/stepjam/YARR) page and follow 
 installation instructions.
@@ -128,6 +120,12 @@ python launch.py method=C2FARM rlbench.task=phone_on_base rlbench.demo_path=/hom
 python launch.py rlbench.task=take_umbrella_out_of_umbrella_stand framework.gpu=0
 
 ```
+![task grid image missing](readme_files/arm_c2farm.png)
+
+Not that C2F-ARM is the better performing system.
+
+useful thread for fetching from origin:
+https://stackoverflow.com/questions/5884784/how-to-pull-remote-branch-from-somebody-elses-repo 
 
 ## Running experiments
 
