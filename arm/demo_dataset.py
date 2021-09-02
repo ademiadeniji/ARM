@@ -37,7 +37,10 @@ from natsort import natsorted
 import logging
 from functools import partial 
 SHUFFLE_RNG = 2843014334
-EXCLUDE_KEYS = ['last_img'] # use this solely for visualization
+EXCLUDE_KEYS = [
+    'last_img',
+    'all_imgs'
+    ] # use this solely for visualization
 def _load_and_maybe_resize(filename, size):
     image = Image.open(filename)
     if image.size[0] != size[0] or image.size[1] != size[1]:
@@ -101,6 +104,7 @@ class RLBenchDemoDataset(Dataset):
         obs_config: ObservationConfig = ObservationConfig(),
         root_dir: str = '/home/mandi/all_rlbench_data',
         exclude_tasks: List[str] = [],
+        include_tasks: List[str] = [],
         data_augs: dict = {}, 
         split: List[float] = [0.9, 0.1],
         mode: str = 'train',
@@ -113,8 +117,14 @@ class RLBenchDemoDataset(Dataset):
 
         all_names = sorted([ s.split('/')[-1] for s in  glob(join(root_dir, '*')) ])
         all_names = [n for n in all_names if '.txt' not in n] # only get task names
-        self._task_names = [name for name in all_names if name not in exclude_tasks]
         
+        assert not (len(exclude_tasks) > 0 and len(include_tasks) > 0), 'Must only specify task subset in exactly one way'
+        if len(exclude_tasks) > 0:
+            self._task_names = [name for name in all_names if name not in exclude_tasks]
+        elif len(include_tasks) > 0:
+            self._task_names = [name for name in all_names if name in include_tasks]
+        else:
+            self._task_names = all_names 
         self._all_file_names = []
 
         prev = 0 # cursor 
@@ -213,16 +223,21 @@ class RLBenchDemoDataset(Dataset):
             transforms(
                 np.array(ob.front_rgb)) for ob in short_obs])
         data_dict['last_img'] = short_obs[-1].front_rgb
+        data_dict['all_imgs'] = [ob.front_rgb for ob in short_obs]
         data_dict.update(self._get_names(idx))
         # TODO: data_dict['front_depth'] = 
         return data_dict 
 
-    def get_some_data(self, num_task=2, num_vars=2):
+    def get_some_data(self, num_task=-1, num_vars=-1):
         """Return some tasks and Some of each's variations"""
         data_list = []
-        task_idxs = self._task_variation_tree[:num_task]
+        task_idxs = self._task_variation_tree
+        if num_task > 0:
+            task_idxs = task_idxs[:num_task]    # limit num of tasks 
         for idx_list in task_idxs:
-            for var_idx in idx_list[:num_vars]:
+            if num_vars > 0:
+                idx_list = idx_list[:num_vars]  # limit num of variations
+            for var_idx in idx_list:
                 data = self.__getitem__(var_idx[0]) 
                 data_list.append(data)
 
@@ -463,12 +478,12 @@ if __name__ == '__main__':
     # spent = time.time() - t
     # print('finished loading one epoch, count:', count, spent)
     
-    for data in train_loader:
-        model_inp = torch.stack([v['front_rgb'] for k, v in data.items()])
-        inp_names = [v['name'] for k, v in data.items()] 
+    # for data in train_loader:
+    #     model_inp = torch.stack([v['front_rgb'] for k, v in data.items()])
+    #     inp_names = [v['name'] for k, v in data.items()] 
  
-        visualize_batch(model_inp, inp_names=inp_names)
-        break
+    #     visualize_batch(model_inp, inp_names=inp_names)
+    #     break
      
          
     

@@ -19,7 +19,8 @@ do
 python train_rep.py encoder.OPTIM.BASE_LR=${LR} \
     train.run_name=sweepModel-frame${FRAME} \
     dataset.num_steps_per_episode=${FRAME} \
-    encoder.DATA.NUM_FRAMES=${FRAME} sampler.batch_dim=5 
+    encoder.DATA.NUM_FRAMES=${FRAME} sampler.batch_dim=5 \
+    sampler.samples_per_variation=6 
 
 python train_rep.py encoder.OPTIM.BASE_LR=${LR} \
     train.run_name=sweepModel-frame${FRAME} \

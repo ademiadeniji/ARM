@@ -1,6 +1,8 @@
 """
-Mandi(0802): adding ContextAgent to every layer of Qattention, reference to 
-QAttentionMultitask.qattention_agent, which is not c2f 
+For now, ContextAgent only provides embeddings at the 'stacked_qattention' level,
+so it only **acts once**, and then pass down the embedding to every layer of Qattention, 
+
+reference: QAttentionMultitask.qattention_agent, but earlier version was ARM, does not use multiple attention layers
 """
 import copy
 import logging
@@ -117,7 +119,8 @@ class QAttentionContextAgent(Agent):
                  grad_clip: float = 20.,
                  include_low_dim_state: bool = False,
                  image_resolution: list = None,
-                 lambda_weight_l2: float = 0.0
+                 lambda_weight_l2: float = 0.0,
+                 update_context_agent: bool = True,
                  ):
         self._layer = layer
         self._lambda_trans_qreg = lambda_trans_qreg
@@ -146,6 +149,8 @@ class QAttentionContextAgent(Agent):
 
         self._name = NAME + '_layer' + str(self._layer)
 
+        self._update_context_agent = update_context_agen
+
     def build(self, training: bool, device: torch.device = None):
         if device is None:
             device = torch.device('cpu')
@@ -172,12 +177,17 @@ class QAttentionContextAgent(Agent):
             for param in self._q_target.parameters():
                 param.requires_grad = False
             utils.soft_updates(self._q, self._q_target, 1.0)
+            q_params = self._q.parameters()
+            emb_params = self._context_agent._embedding_net.parameters()
+            if self._update_context_agent:
+                q_params += emb_params
             self._optimizer = torch.optim.Adam(
-                self._q.parameters(), lr=self._lr,
+                q_params, lr=self._lr,
                 weight_decay=self._lambda_weight_l2)
 
             logging.info('# Q Params: %d' % sum(
                 p.numel() for p in self._q.parameters() if p.requires_grad))
+            logging.info(f"Also updating context embedder?: {self._update_context_agent}")
         else:
             for param in self._q.parameters():
                 param.requires_grad = False

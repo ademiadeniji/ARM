@@ -1,0 +1,75 @@
+tasks: ???
+short_names: ??? 
+run_name: burn 
+log_path: ??? 
+rlbench:
+    task: ''
+    tasks: ${tasks}
+    demos: 10
+    demo_path: /home/mandi/ARM/data
+    episode_length: 10
+    cameras: [front]
+    camera_resolution: [128, 128]
+    scene_bounds: [-0.3, -0.5, 0.6, 0.7, 0.5, 1.6]
+
+replay:
+    batch_size: 60 # remember to adjust based on using single or task-separate buffers
+    timesteps: 1
+    prioritisation: True
+    use_disk: False
+    path: '/tmp/arm_sanity/replay'  # Only used when use_disk is True.
+    share_across_tasks: False
+
+framework:
+    log_freq:  500 # set to bigger to not save so many media files 
+    save_freq: 100
+    train_envs: 2
+    eval_envs: 2
+    replay_ratio: 128
+    transitions_before_train: 100
+    tensorboard_logging: True
+    csv_logging: False
+    wandb_logging: True
+    training_iterations: 5000
+    gpu: 0
+    logdir: '/home/mandi/ARM/log/'
+    seeds: 1
+    resume: ${resume}
+    resume_path: ${resume_path}
+    resume_run: ${resume_run}
+    resume_step:  ${resume_step}
+    resume_dir: ''
+
+
+resume: False
+resume_path: '/home/mandi/ARM/log/'
+resume_run: ''
+resume_step: 24300
+
+dev:
+    q_thres: 0.75  
+    qagent_update_context: True
+    
+contexts:
+    with_action_context: False
+    pass_down_context: False 
+    is_train: True
+    embedding_size: 32  
+    num_support: 3  #for TecNet
+    num_query:  1
+    margin:     1.0
+    emb_lambda: 1.0
+    save_context: False 
+    loss_mode:  'hinge' 
+    prod_of_gaus_factors_over_batch: False # for PEARL 
+
+defaults:
+    - method: C2FARM
+    - context_encoder: SlowRes
+
+wandb:
+    job_type: 'launch'
+    group:    'single'
+hydra:
+    run:
+        dir: ${framework.logdir}/ #${rlbench.task}/${method.name}

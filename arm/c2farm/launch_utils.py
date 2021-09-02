@@ -268,46 +268,42 @@ def create_agent(cfg: DictConfig, env, depth_0bounds=None, cam_resolution=None):
 
 def create_agent_with_context(cfg: DictConfig, env, 
         depth_0bounds=None, cam_resolution=None):
+    """let's keep the hinge/representation loss completely separate from 
+        replay_sampled used for Q-attention updates: have an context_agent to calculate 
+        embeddings and embedding losses, but a separate update() function that only takes in
+        context inputs (i.e. no actions/terminal/other info); context_agent also has an act()
+        method, only this one takes in replay_samples and produce embeddings used for q-attention
+        agent, and the optimizers in qattention agents optionally also updates context_agent's embedder
+        """
     VOXEL_FEATS = 3
     LATENT_SIZE = 64
     depth_0bounds = depth_0bounds or [-0.3, -0.5, 0.6, 0.7, 0.5, 1.6]
     cam_resolution = cam_resolution or [128, 128]
-
     include_prev_layer = False
     
     # New(Mandi): create context agent here 
-    embedding_net = SiameseCNNWithFCModel(
-        input_shapes=[
-            [(3 * embedding_timesteps) + 
-            (train_env.action_shape[0] * embedding_timesteps if cfg.contexts.with_action else 0),
-            cam_resolution[0], cam_resolution[1]]
-                ] * 2,
-        filters=[64, 64, 64],
-        kernel_sizes=[3, 3, 3],
-        strides=[2, 2, 2],
-        pre_filters=[32],
-        pre_kernel_sizes=[3],
-        pre_strides=[1],
-        norm=None if 'None' in cfg.method.norm else cfg.method.norm,
-        activation=cfg.method.activation, # same as c2farm
-        fc_layers=[64, 64, embedding_size]
-        )                
-    
-    # context_agent = ContextAgent(
-    #     embedding_net=embedding_net, 
-    #     camera_names=cfg.rlbench.cameras,
-    #     with_action_context=cfg.contexts.with_action,
-    #     is_train: bool = True,
-    #     # for traintime:
-    #     embedding_size=cfg.contexts.context_size,
-    #     num_support: int, # for TecNet
-    #     num_query: int,   
-    #     margin: float = 0.1,
-    #     emb_lambda: float = 1.0,
-    #     save_context: bool = False, 
-    #     loss_mode: str = 'hinge', 
-    #     prod_of_gaus_factors_over_batch: bool = False, # for PEARL 
-    #     )
+    # embedding_net = SiameseCNNWithFCModel(
+    #     input_shapes=[
+    #         [(3 * embedding_timesteps) + 
+    #         (train_env.action_shape[0] * embedding_timesteps if cfg.contexts.with_action else 0),
+    #         cam_resolution[0], cam_resolution[1]]
+    #             ] * 2,
+    #     filters=[64, 64, 64],
+    #     kernel_sizes=[3, 3, 3],
+    #     strides=[2, 2, 2],
+    #     pre_filters=[32],
+    #     pre_kernel_sizes=[3],
+    #     pre_strides=[1],
+    #     norm=None if 'None' in cfg.method.norm else cfg.method.norm,
+    #     activation=cfg.method.activation, # same as c2farm
+    #     fc_layers=[64, 64, embedding_size]
+    #     )  
+    embedding_net = TempResNet(cfg.context_encoder)                  
+    context_agent = ContextAgent(
+        embedding_net=embedding_net, 
+        camera_names=cfg.rlbench.cameras,
+        **cfg.contexts
+        )
 
     num_rotation_classes = int(360. // cfg.method.rotation_resolution)
     qattention_agents = []
@@ -362,7 +358,9 @@ def create_agent_with_context(cfg: DictConfig, env,
             num_rotation_classes=num_rotation_classes,
             rotation_resolution=cfg.method.rotation_resolution,
             grad_clip=0.01,
-            gamma=0.99
+            gamma=0.99,
+            context_agent=context_agent, 
+            update_context_agent=(cfg.dev.qagent_update_context, and depth == 0)
         )
         qattention_agents.append(qattention_agent)
 
@@ -374,5 +372,8 @@ def create_agent_with_context(cfg: DictConfig, env,
         camera_names=cfg.rlbench.cameras,
         rotation_prediction_depth=0,
     )
-    preprocess_agent = PreprocessAgent(pose_agent=rotation_agent)
+    preprocess_agent = PreprocessAgent(
+        pose_agent=rotation_agent,
+        context_agent=context_agent
+        )
     return preprocess_agent

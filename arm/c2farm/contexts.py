@@ -5,10 +5,12 @@ import torch
 import torch.nn as nn
 from yarr.agents.agent import Agent, ActResult, ScalarSummary, \
     HistogramSummary, Summary
-
 import numpy as np
 import math
 from abc import ABC, abstractmethod
+from arm.models.utils import make_optimizer # tie the optimizer definition closely with embedding nets 
+
+NAME = 'ContextEmbedderAgent'
 
 class SequenceStrategy(ABC):
 
@@ -46,7 +48,8 @@ class StackOnBatch(SequenceStrategy):
 
 
 class ContextAgent(Agent):
-    """Merge train and test time embeddingAgent (from QAttentionMultitask.EmbeddingAgent) into one"""
+    """Merge train and test time embeddingAgent 
+    (from QAttentionMultitask.EmbeddingAgent) into one"""
 
     def __init__(self,
                  embedding_net: nn.Module,
@@ -62,7 +65,6 @@ class ContextAgent(Agent):
                  save_context: bool = False, 
                  loss_mode: str = 'hinge', 
                  prod_of_gaus_factors_over_batch: bool = False, # for PEARL 
-
                  ):
         self._embedding_net = embedding_net
         self._camera_names = camera_names
@@ -82,21 +84,29 @@ class ContextAgent(Agent):
         self._emb_lambda = emb_lambda
         #   PEARL
         self._prod_of_gaus_factors_over_batch = prod_of_gaus_factors_over_batch
+        self._name = NAME 
 
     def build(self, training: bool, device: torch.device = None):
         """Train and Test time use the same build() """
         if device is None:
             device = torch.device('cpu') 
-        self._embedding_net = copy.deepcopy(self._embedding_net)
-        self._embedding_net.build()
-        self._embedding_net.to(device).train(training)
+        self._embedding_net = self._embedding_net
+        #self._embedding_net.build()
+        #self._embedding_net.to(device).train(training)
         self._device = device
         self._zero = torch.tensor(0.0, device=device)
+        # use a separate optimizer here to update the params with metric loss,
+        # optionally, qattention agents also have optimizers that update the embedding params here
+        self._optimizer = make_optimizer(self._embedding_net)
 
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:
+        """observation batch may require different input preprocessing, handle here """
+        model_inp = observation['context_input'].to(self._device)
+        embeddings = self._embedding_net(model_inp)
+        self._current_context = embeddings
         return ActResult(self._current_context)
-
+        
     def set_new_context(self, observation: dict):
         with torch.no_grad():
             observations = []
@@ -134,18 +144,35 @@ class ContextAgent(Agent):
             self._embedding_net.state_dict(),
             os.path.join(savedir, 'embedding_net.pt'))
 
-    def update(self, step, replay_sample: dict) -> dict:
-        if self._is_train:
-            return self.train_update(step, replay_sample)
-        else:
-            return self.test_update(step, replay_sample)
+    # def update(self, step, replay_sample: dict) -> dict:
+    #     if self._is_train:
+    #         return self.train_update(step, replay_sample)
+    #     else:
+    #         return self.test_update(step, replay_sample)
 
     def update_summaries(self) -> List[Summary]:
         if self._is_train:
-            return self.update_train_summaries()
+            return self.update_train_summaries() 
         else:
             return self.update_test_summaries()
     
+    def _preprocess_inputs(self, batch):
+        data = torch.stack([ d.get('front_rgb') for collate_id, d in batch.items()] ) 
+        assert len(data.shape) == 6, 'Must be shape (b, n, num_frames, channels, img_h, img_w) '
+        b, k, n, ch, img_h, img_w = data.shape 
+        model_inp = rearrange(data, 'b k n ch h w -> (b k) ch n h w').to(self._device)
+        return model_inp 
+
+    def update(self, context_batch):
+        # this is be kept separate from replay_sample batch, s.t. we can contruct the
+        # batch for embedding loss with more freedom 
+        model_inp = self._preprocess_inputs(context_batch)
+        embeddings = self._embedding_net(model_inp)
+        if self._loss_mode == 'hinge':
+            emb_loss = self._compute_hinge_loss(embeddings)
+        else:
+            raise NotImplementedError
+
     def train_update(self, step: int, replay_sample: dict) -> dict: 
         if self._current_context is not None:
             b = replay_sample['action'].shape[0]
@@ -241,19 +268,21 @@ class ContextAgent(Agent):
         }
 
     def update_train_summaries(self) -> List[Summary]:
+        prefix = 'context'
         summaries = []
         if self._current_context is None:
             summaries.extend([
-                ScalarSummary('%s/loss' % NAME, self._loss),
-                ScalarSummary('%s/accuracy' % NAME, self._embedding_accuracy),
-                ScalarSummary('%s/mean_embedding' % NAME, self._mean_embedding),
+                ScalarSummary('%s/loss' % prefix, self._loss),
+                ScalarSummary('%s/accuracy' % prefix, self._embedding_accuracy),
+                ScalarSummary('%s/mean_embedding' % prefix, self._mean_embedding),
             ])
-            for tag, param in self._embedding_net.named_parameters():
-                assert not torch.isnan(param.grad.abs() <= 1.0).all()
-                summaries.append(
-                    HistogramSummary('%s/gradient/%s' % (NAME, tag), param.grad))
-                summaries.append(
-                    HistogramSummary('%s/weight/%s' % (NAME, tag), param.data))
+            # not logging parameters yet 
+            # for tag, param in self._embedding_net.named_parameters():
+            #     assert not torch.isnan(param.grad.abs() <= 1.0).all()
+            #     summaries.append(
+            #         HistogramSummary('%s/gradient/%s' % (prefix, tag), param.grad))
+            #     summaries.append(
+            #         HistogramSummary('%s/weight/%s' % (prefix, tag), param.data))
         return summaries
     
     def update_test_summaries(self) -> List[Summary]:

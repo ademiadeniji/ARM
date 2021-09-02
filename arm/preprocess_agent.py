@@ -9,12 +9,17 @@ from yarr.agents.agent import Agent, Summary, ActResult, \
 class PreprocessAgent(Agent):
 
     def __init__(self,
-                 pose_agent: Agent):
+                 pose_agent: Agent,
+                 context_agent: Agent = None):
         self._pose_agent = pose_agent
+        self._context_agent = context_agent 
 
-    def build(self, training: bool, device: torch.device = None):
+    def build(self, training: bool, device: torch.device = None, context_device: torch.device = None):
         self._pose_agent.build(training, device)
         self._device = device 
+        if self._context_agent is not None:
+            context_device = context_device if context_device is not None else device 
+            self._context_agent.build(training, context_device)
 
     def _norm_rgb_(self, x):
         return (x.float() / 255.0) * 2.0 - 1.0
@@ -26,7 +31,13 @@ class PreprocessAgent(Agent):
             if 'rgb' in k:
                 replay_sample[k] = self._norm_rgb_(v)
         self._replay_sample = replay_sample
-        return self._pose_agent.update(step, replay_sample)
+        pose_dict = self._pose_agent.update(step, replay_sample)
+         
+        return pose_dict
+
+    def update_context(self, step: int, context_batch: dict) -> dict:
+        self._context_batch = context_batch 
+        return self._context_agent.update_context(step, context_batch)
 
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:
@@ -34,6 +45,7 @@ class PreprocessAgent(Agent):
         for k, v in observation.items():
             if 'rgb' in k:
                 observation[k] = self._norm_rgb_(v)
+        # if context is needed the pose_agent will also have access to context_agent to handle it
         act_res = self._pose_agent.act(step, observation, deterministic)
         act_res.replay_elements.update({'demo': False})
         return act_res
@@ -73,17 +85,27 @@ class PreprocessAgent(Agent):
                                  self._replay_sample['sampling_probabilities']),
             ])
         sums.extend(self._pose_agent.update_summaries())
+        if self._context_agent is not None:
+            sums.extend(self._context_agent.update_summaries())
+            
         return sums
 
-    def act_summaries(self) -> List[Summary]:
-        return self._pose_agent.act_summaries()
+    def act_summaries(self) -> List[Summary]: 
+        return self._pose_agent.act_summaries() # context stuff should already be handled 
 
     def load_weights(self, savedir: str):
         self._pose_agent.load_weights(savedir)
+        if self._context_agent is not None:
+            self._context_agent.load_weights(savedir)
+
 
     def save_weights(self, savedir: str):
         self._pose_agent.save_weights(savedir)
+        if self._context_agent is not None:
+            self._context_agent.save_weights(savedir)
 
     def reset(self) -> None:
         self._pose_agent.reset()
+        if self._context_agent is not None:
+            self._context_agent.reset()
 

@@ -129,25 +129,10 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
 
     def build(self, training: bool, device=None) -> None:
         super(QAttentionStackContextAgen, self).build(training, device)
-        self._context_agent.build(training, device)
+        # context agent should already be built  
         if device is None:
             device = torch.device('cpu')
         self._device = device 
-    
-    def update(self, step: int, replay_sample: dict) -> dict:
-        """Need to update context agent now"""
-        context_dict = self._context_agent.update(step, replay_sample)
-        context = context_dict.get('context')
-
-        priorities = 0
-        for qa in self._qattention_agents:
-            update_dict = qa.update(step, replay_sample)
-            priorities += update_dict['priority']
-            replay_sample.update(update_dict)
-        return {
-            'priority': (priorities) ** REPLAY_ALPHA,
-            'context': context.detach() 
-        }
     
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:
@@ -173,6 +158,8 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
             observation['prev_layer_voxel_grid'] = act_results.observation_elements['prev_layer_voxel_grid']
             if self._pass_down_context:
                 context_res.context = act_results.observation_elements['encoded_context']
+                observation_elements['context_embed_layer_%d' % depth] = act_results.observation_elements['encoded_context'].cpu().numpy()
+
             
             for n in self._camera_names:
                 px, py = utils.point_to_pixel_index(

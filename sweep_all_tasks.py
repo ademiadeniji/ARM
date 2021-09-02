@@ -86,7 +86,8 @@ SKIP_TASKS = {
     'take_frame_off_hanger':    'hanger', # 30%
     'memo.txt':                 'xx',
     'open_microwave':           'open_microwave', # ALWAYS errors out
-    'put_knife_in_knife_block': 'put_knife_in_knife_block' # rlbench.task_environment.TaskEnvironmentError: Could not place the task put_knife_in_knife_block in the scene. This should not happen, please raise an issues on this task
+    'put_knife_in_knife_block': 'put_knife_in_knife_block', # rlbench.task_environment.TaskEnvironmentError: Could not place the task put_knife_in_knife_block in the scene. This should not happen, please raise an issues on this task
+    'pour_from_cup_to_cup': 'pour_from_cup_to_cup', #  Could not place the task put_knife_in_knife_block in the scene.
 }
 
  
