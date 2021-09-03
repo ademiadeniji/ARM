@@ -81,11 +81,29 @@ SHORT_NAMES = {
     'take_frame_off_hanger':    'hanger',
 }
 
+LATEST_MT = [
+    'pick_up_cup',
+    'phone_on_base',
+    'pick_and_lift',
+    'put_rubbish_in_bin',
+    'reach_target',
+    'stack_wine', 
+    'take_lid_off_saucepan',
+    'take_umbrella_out_of_umbrella_stand',
+    'lamp_on',
+    'lamp_off',
+    'open_door',
+    'press_switch',
+    'push_button',
+    'take_usb_out_of_computer',
+    'close_drawer',
+]
 def _gen_short_names(cfg: DictConfig): # just for logging dirs
     names = []
     cfg.tasks = sorted(cfg.tasks)
     for tsk in cfg.tasks:
-        names.append(SHORT_NAMES[tsk])
+        #names.append(SHORT_NAMES[tsk])
+        names.append( "_".join(tsk.split("_")[-2:]) )
     names = sorted(names)
     return f"{len(names)}tasks-" + "-".join(names)
 
@@ -148,11 +166,11 @@ def run_seed(cfg: DictConfig, env, cams, device, seed, tasks) -> None:
     if cfg.method.name == 'C2FARM':
         if cfg.replay.share_across_tasks:
             
-            total_size = int(len(tasks) * cfg.replay.batch_size)
-            logging.info(f'New: try using one replay for multiple tasks, one batch size is aggregated to {total_size}')
-            cfg.replay.batch_size = total_size
+            #total_size = int(len(tasks) * cfg.replay.batch_size)
+            #logging.info(f'New: try using one replay for multiple tasks, one batch size is aggregated to {total_size}')
+            #cfg.replay.batch_size = total_size
             r = c2farm.launch_utils.create_replay(
-                total_size, cfg.replay.timesteps,
+                cfg.replay.batch_size, cfg.replay.timesteps,
                 cfg.replay.prioritisation,
                 replay_path if cfg.replay.use_disk else None, cams, env,
                 cfg.method.voxel_sizes)
@@ -205,8 +223,13 @@ def run_seed(cfg: DictConfig, env, cams, device, seed, tasks) -> None:
             pickle.dump(action_min_max, f)
 
     device_list = [ i for i in range(torch.cuda.device_count()) ]
+    env_gpus = None 
     if len(device_list) > 1:
-        print('Warning! Using multiple GPUs idxed: ', device_list)
+        print('Total visible GPUs idxed: ', device_list)
+        env_gpus = device_list[cfg.framework.env_runner_gpu:]
+        print('Environment runner using GPUs idxed: ', env_gpus)
+
+    
     env_runner = EnvRunner(
         train_env=env, agent=agent, train_replay_buffer=replays,
         num_train_envs=train_envs,
@@ -215,7 +238,7 @@ def run_seed(cfg: DictConfig, env, cams, device, seed, tasks) -> None:
         episode_length=cfg.rlbench.episode_length,
         stat_accumulator=stat_accum,
         weightsdir=weightsdir,
-        device_list=device_list,
+        device_list=env_gpus,
         share_buffer_across_tasks=cfg.replay.share_across_tasks)
 
     resume_dir = None
@@ -249,7 +272,7 @@ def run_seed(cfg: DictConfig, env, cams, device, seed, tasks) -> None:
         tensorboard_logging=cfg.framework.tensorboard_logging,
         csv_logging=cfg.framework.csv_logging,
         wandb_logging=cfg.framework.wandb_logging,
-        save_freq=cfg.dev.save_freq,
+        save_freq=cfg.framework.save_freq,
         )
     
     
@@ -267,7 +290,7 @@ def main(cfg: DictConfig) -> None:
     
     if cfg.framework.gpu is not None and torch.cuda.is_available():
         device = torch.device("cuda:%d" % cfg.framework.gpu)
-        torch.cuda.set_device(cfg.framework.gpu)
+        #torch.cuda.set_device(cfg.framework.gpu)
         torch.backends.cudnn.enabled = torch.backends.cudnn.benchmark = True
     else:
         device = torch.device("cpu")
@@ -277,8 +300,16 @@ def main(cfg: DictConfig) -> None:
         ArmActionMode.ABS_EE_POSE_PLAN_WORLD_FRAME,
         GripperActionMode.OPEN_AMOUNT)
 
-    tasks = cfg.tasks 
-    task_names = [SHORT_NAMES.get(tsk) for tsk in tasks]
+    if cfg.exclude_tasks:
+        tasks = [tsk for tsk in LATEST_MT if tsk not in cfg.exclude_tasks]
+        names = []
+        for tsk in cfg.exclude_tasks:
+            names.append( "_".join(tsk.split("_")[-2:]) )
+            names = sorted(names) 
+        tasks_name = f"{len(tasks)}-exclude-"+ "-".join(names)
+    else:
+        tasks = cfg.tasks 
+    task_names = tasks #[SHORT_NAMES.get(tsk) for tsk in tasks]
     cfg.short_names = task_names 
     task_classes = [task_file_to_task_class(t) for t in tasks]
 
@@ -299,7 +330,7 @@ def main(cfg: DictConfig) -> None:
     existing_seeds = len(list(filter(lambda x: 'seed' in x, os.listdir(log_path))))
     logging.info('Logging to:' + log_path)
     cfg.log_path = log_path 
-    logging.info('\n' + OmegaConf.to_yaml(cfg))
+    # logging.info('\n' + OmegaConf.to_yaml(cfg))
 
     for seed in range(existing_seeds, existing_seeds + cfg.framework.seeds):
         logging.info('Starting seed %d.' % seed)

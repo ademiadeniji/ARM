@@ -87,7 +87,7 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
                 self.eval and self._episode_index % RECORD_EVERY == 0)
         self._episode_index += 1
         self._recorded_images.clear()
-        self._i = 0
+        self._i = 0 
         return self._previous_obs_dict
 
     def register_callback(self, func):
@@ -139,3 +139,5 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
             1, live_demos=False, random_selection=False, from_episode_number=i)
         self._task.reset_to_demo(d)
 
+    def get_task(self, task_class):
+        return self._rlbench_env.get_task(task_class)

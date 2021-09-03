@@ -18,9 +18,18 @@ from arm.c2farm.networks import Qattention3DNet, Qattention3DNetWithContext
 from arm.c2farm.qattention_agent import QAttentionAgent
 from arm.c2farm.qattention_agent_with_context import QAttentionContextAgent
 from arm.c2farm.qattention_stack_agent import QAttentionStackAgent, QAttentionStackContextAgent
-from arm.c2farm.contexts import ContextAgent
+from arm.c2farm.context_agent import ContextAgent
 from arm.network_utils import SiameseCNNWithFCModel
+
+from arm.models.slowfast  import TempResNet
+from arm.demo_dataset import MultiTaskDemoSampler, RLBenchDemoDataset, collate_by_id
+from arm.models.utils import make_optimizer 
+from functools import partial
+from torch.utils.data import DataLoader
+
 REWARD_SCALE = 100.0
+TASK_ID='task_id'
+VAR_ID='variation_id'
 
 
 def create_replay(batch_size: int, timesteps: int, prioritisation: bool,
@@ -48,6 +57,9 @@ def create_replay(batch_size: int, timesteps: int, prioritisation: bool,
 
     extra_replay_elements = [
         ReplayElement('demo', (), np.bool),
+        ReplayElement('task_id', (), np.uint8),
+        #ReplayElement('task_name', (), str),
+        ReplayElement('variation_id', (), np.uint8),
     ]
 
     replay_class = UniformReplayBuffer
@@ -104,7 +116,6 @@ def _get_action(
     return trans_indicies, rot_and_grip_indicies, np.concatenate(
         [obs_tp1.gripper_pose, np.array([grip])]), attention_coordinates
 
-
 def _add_keypoints_to_replay(
         replay: ReplayBuffer,
         inital_obs: Observation,
@@ -116,7 +127,11 @@ def _add_keypoints_to_replay(
         voxel_sizes: List[int],
         bounds_offset: List[float],
         rotation_resolution: int,
-        crop_augmentation: bool):
+        crop_augmentation: bool,
+        task: str,
+        variation: int, 
+        task_id: int, 
+        ):
     prev_action = None
     obs = inital_obs
     for k, keypoint in enumerate(episode_keypoints):
@@ -131,7 +146,7 @@ def _add_keypoints_to_replay(
         obs_dict = env.extract_obs(obs, t=k, prev_action=prev_action)
         prev_action = np.copy(action)
 
-        others = {'demo': True}
+        others = {'demo': True, TASK_ID: task_id , VAR_ID: variation}
         final_obs = {
             'trans_action_indicies': trans_indicies,
             'rot_grip_action_indicies': rot_grip_indicies,
@@ -148,6 +163,7 @@ def _add_keypoints_to_replay(
             final_obs['%s_pixel_coord' % name] = [py, px]
         others.update(final_obs)
         others.update(obs_dict)
+         
         timeout = False
         replay.add(action, reward, terminal, timeout, **others)
         obs = obs_tp1  # Set the next obs
@@ -170,12 +186,15 @@ def fill_replay(replay: ReplayBuffer,
                 voxel_sizes: List[int],
                 bounds_offset: List[float],
                 rotation_resolution: int,
-                crop_augmentation: bool):
+                crop_augmentation: bool,
+                variation: int = 0,
+                task_id: int = 0,
+                ):
 
     logging.info('Filling replay with demos...')
     for d_idx in range(num_demos):
         demo = env.env.get_demos(
-            task, 1, variation_number=0, random_selection=False,
+            task, 1, variation_number=variation, random_selection=False,
             from_episode_number=d_idx)[0]
         episode_keypoints = demo_loading_utils.keypoint_discovery(demo)
 
@@ -193,7 +212,7 @@ def fill_replay(replay: ReplayBuffer,
             _add_keypoints_to_replay(
                 replay, obs, demo, env, episode_keypoints, cameras,
                 rlbench_scene_bounds, voxel_sizes, bounds_offset,
-                rotation_resolution, crop_augmentation)
+                rotation_resolution, crop_augmentation, task, variation, task_id)
     logging.info('Replay filled with demos.')
 
 def create_agent(cfg: DictConfig, env, depth_0bounds=None, cam_resolution=None):
@@ -298,11 +317,11 @@ def create_agent_with_context(cfg: DictConfig, env,
     #     activation=cfg.method.activation, # same as c2farm
     #     fc_layers=[64, 64, embedding_size]
     #     )  
-    embedding_net = TempResNet(cfg.context_encoder)                  
+    embedding_net = TempResNet(cfg.encoder)                  
     context_agent = ContextAgent(
         embedding_net=embedding_net, 
         camera_names=cfg.rlbench.cameras,
-        **cfg.contexts
+        **cfg.contexts.agent
         )
 
     num_rotation_classes = int(360. // cfg.method.rotation_resolution)
@@ -319,7 +338,7 @@ def create_agent_with_context(cfg: DictConfig, env,
                 dense_feats=128,
                 activation=cfg.method.activation,
                 low_dim_size=env.low_dim_state_len,
-                context_size=cfg.contexts.context_size,
+                context_size=cfg.contexts.agent.embedding_size,
                 )
         else:
             last = depth == len(cfg.method.voxel_sizes) - 1
@@ -334,7 +353,7 @@ def create_agent_with_context(cfg: DictConfig, env,
                 activation=cfg.method.activation,
                 low_dim_size=env.low_dim_state_len,
                 include_prev_layer=include_prev_layer,
-                context_size=LATENT_SIZE if cfg.contexts.pass_down_context else cfg.contexts.context_size 
+                context_size=LATENT_SIZE if cfg.contexts.pass_down_context else cfg.contexts.agent.embedding_size,
                 )
 
         qattention_agent = QAttentionContextAgent(
@@ -360,7 +379,7 @@ def create_agent_with_context(cfg: DictConfig, env,
             grad_clip=0.01,
             gamma=0.99,
             context_agent=context_agent, 
-            update_context_agent=(cfg.dev.qagent_update_context, and depth == 0)
+            update_context_agent=(cfg.dev.qagent_update_context and depth == 0)
         )
         qattention_agents.append(qattention_agent)
 

@@ -20,11 +20,13 @@ from yarr.agents.agent import Agent, ActResult, ScalarSummary, \
 from arm import utils
 from arm.utils import visualise_voxel, stack_on_channel
 from arm.c2farm.voxel_grid import VoxelGrid
+from itertools import chain
 
+from arm.c2farm.context_agent import CONTEXT_KEY
 NAME = 'QAttentionAgent'
 REPLAY_BETA = 1.0
-
-
+ 
+ 
 class QFunction(nn.Module):
 
     def __init__(self,
@@ -70,7 +72,7 @@ class QFunction(nn.Module):
         return coords, rot_and_grip_indicies
 
     def forward(self, x, proprio, pcd,
-                bounds=None, latent=None, context=None):
+                bounds=None, prev_layer_voxel_grid=None, context=None):
         # x will be list of list (list of [rgb, pcd])
         b = x[0][0].shape[0]
         pcd_flat = torch.cat(
@@ -88,7 +90,7 @@ class QFunction(nn.Module):
         # Swap to channels fist
         voxel_grid = voxel_grid.permute(0, 4, 1, 2, 3).detach()
 
-        q_trans, rot_and_grip_q, encoded_context = self._qnet(voxel_grid, proprio, latent, context)
+        q_trans, rot_and_grip_q, encoded_context = self._qnet(voxel_grid, proprio, prev_layer_voxel_grid, context)
         return q_trans, rot_and_grip_q, voxel_grid, encoded_context
 
     def latents(self):
@@ -120,6 +122,7 @@ class QAttentionContextAgent(Agent):
                  include_low_dim_state: bool = False,
                  image_resolution: list = None,
                  lambda_weight_l2: float = 0.0,
+                 context_agent: Agent = None, 
                  update_context_agent: bool = True,
                  ):
         self._layer = layer
@@ -149,7 +152,8 @@ class QAttentionContextAgent(Agent):
 
         self._name = NAME + '_layer' + str(self._layer)
 
-        self._update_context_agent = update_context_agen
+        self._context_agent = context_agent
+        self._update_context_agent = update_context_agent
 
     def build(self, training: bool, device: torch.device = None):
         if device is None:
@@ -178,9 +182,9 @@ class QAttentionContextAgent(Agent):
                 param.requires_grad = False
             utils.soft_updates(self._q, self._q_target, 1.0)
             q_params = self._q.parameters()
-            emb_params = self._context_agent._embedding_net.parameters()
+            emb_params = self._context_agent._optim_params
             if self._update_context_agent:
-                q_params += emb_params
+                q_params = [{"params": q_params}] + emb_params
             self._optimizer = torch.optim.Adam(
                 q_params, lr=self._lr,
                 weight_decay=self._lambda_weight_l2)
@@ -283,6 +287,9 @@ class QAttentionContextAgent(Agent):
         return rot_and_grip_values
 
     def update(self, step: int, replay_sample: dict) -> dict:
+        #context_sample = self._preprocess_context_inputs(replay_sample)
+       
+        context = self._context_agent.act_for_replay(step, replay_sample).action.to(self._device)
 
         action_trans = replay_sample['trans_action_indicies'][:, -1,
                        self._layer * 3:self._layer * 3 + 3]
@@ -302,6 +309,8 @@ class QAttentionContextAgent(Agent):
             bounds_tp1 = torch.cat(
                 [cp_tp1 - self._bounds_offset, cp_tp1 + self._bounds_offset],
                 dim=1)
+            if self._pass_down_context:
+                context = replay_sample['prev_layer_encoded_context']
 
         proprio = proprio_tp1 = None
         if self._include_low_dim_state:
@@ -313,9 +322,12 @@ class QAttentionContextAgent(Agent):
 
         obs, obs_tp1, pcd, pcd_tp1 = self._preprocess_inputs(replay_sample)
 
-        q, q_rot_grip, voxel_grid = self._q(
-            obs, proprio, pcd, bounds,
-            replay_sample.get('prev_layer_voxel_grid', None))
+        q, q_rot_grip, voxel_grid, encoded_context = self._q(
+            obs, proprio, pcd, 
+            bounds=bounds,
+            prev_layer_voxel_grid=replay_sample.get('prev_layer_voxel_grid', None),
+            context=context,
+            )
         coords, rot_and_grip_indicies = self._q.choose_highest_action(q, q_rot_grip)
 
         with_rot_and_grip = rot_and_grip_indicies is not None
@@ -327,7 +339,8 @@ class QAttentionContextAgent(Agent):
 
             q_tp1, q_rot_grip_tp1, voxel_grid_tp1 = self._q(
                 obs_tp1, proprio_tp1, pcd_tp1, bounds_tp1,
-                replay_sample.get('prev_layer_voxel_grid_tp1', None))
+                prev_layer_voxel_grid=replay_sample.get('prev_layer_voxel_grid_tp1', None),
+                context=context)
             coords_tp1, rot_and_grip_indicies_tp1 = self._q.choose_highest_action(q_tp1, q_rot_grip_tp1)
 
             q_tp1_at_voxel_idx = self._get_value_from_voxel_index(q_tp1_targ, coords_tp1)
@@ -389,6 +402,7 @@ class QAttentionContextAgent(Agent):
             'priority': priority + prev_priority,
             'prev_layer_voxel_grid': voxel_grid,
             'prev_layer_voxel_grid_tp1': voxel_grid_tp1,
+            'prev_layer_encoded_context': encoded_context,
         }
 
     def act(self, step: int, context_res: ActResult, observation: dict,
@@ -409,9 +423,11 @@ class QAttentionContextAgent(Agent):
         obs, pcd = self._act_preprocess_inputs(observation)
 
         # coords: (1, 3)
+        context = context_res.action.to(self._device) if observation.get('prev_layer_encoded_context', None) is None \
+            else observation.get('prev_layer_encoded_context').to(self._device)
         q, q_rot_grip, vox_grid, encoded_context = self._q(obs, proprio, pcd, bounds,
                               observation.get('prev_layer_voxel_grid', None),
-                              context_res.context,
+                              context,
                               )
         coords, rot_and_grip_indicies = self._q.choose_highest_action(q, q_rot_grip)
 
@@ -440,7 +456,7 @@ class QAttentionContextAgent(Agent):
         observation_elements = {
             'attention_coordinate': attention_coordinate,
             'prev_layer_voxel_grid': vox_grid,
-            'encoded_context': encoded_context,
+            'prev_layer_encoded_context': encoded_context,
         }
         info = {
             'voxel_grid_depth%d' % self._layer: vox_grid,

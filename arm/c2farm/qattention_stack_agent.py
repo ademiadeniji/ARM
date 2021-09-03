@@ -119,7 +119,7 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
                  rotation_resolution: float,
                  camera_names: List[str],
                  rotation_prediction_depth: int = 0):
-        super(QAttentionStackContextAgen, self).__init__(
+        super(QAttentionStackContextAgent, self).__init__(
             qattention_agents, rotation_resolution,
             camera_names, rotation_prediction_depth
             )
@@ -128,12 +128,26 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
         self._context = None 
 
     def build(self, training: bool, device=None) -> None:
-        super(QAttentionStackContextAgen, self).build(training, device)
+        super(QAttentionStackContextAgent, self).build(training, device)
         # context agent should already be built  
         if device is None:
             device = torch.device('cpu')
         self._device = device 
     
+    def update(self, step: int, replay_sample: dict) -> dict:
+        """NOTE(mandi): we may need to 'pass down' the encoded context embedding from 
+            one layer to another"""
+        priorities = 0
+        for qa in self._qattention_agents:
+            update_dict = qa.update(step, replay_sample)
+            if self._pass_down_context:
+                assert 'prev_layer_encoded_context' in update_dict.keys(), 'Need previous layer to pass down encoded context'
+            priorities += update_dict['priority']
+            replay_sample.update(update_dict)
+        return {
+            'priority': (priorities) ** REPLAY_ALPHA,
+        }
+
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:
         """Context agent acts first """

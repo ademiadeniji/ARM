@@ -1,30 +1,32 @@
-tasks: ???
-short_names: ??? 
+tasks: ['push_button']
 run_name: burn 
 log_path: ??? 
-rlbench:
-    task: ''
+tasks_name: ???
+rlbench: 
     tasks: ${tasks}
-    demos: 10
-    demo_path: /home/mandi/ARM/data
+    all_tasks: ???      # [task_A, task_B,...]
+    all_variations: ??? # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
+    variations: -1
+    demos: 3
+    demo_path: /home/mandi/all_rlbench_data
     episode_length: 10
     cameras: [front]
     camera_resolution: [128, 128]
     scene_bounds: [-0.3, -0.5, 0.6, 0.7, 0.5, 1.6]
 
 replay:
-    batch_size: 60 # remember to adjust based on using single or task-separate buffers
+    batch_size: 30 # remember to adjust based on using single or task-separate buffers
     timesteps: 1
     prioritisation: True
     use_disk: False
     path: '/tmp/arm_sanity/replay'  # Only used when use_disk is True.
-    share_across_tasks: False
+    share_across_tasks: True
 
 framework:
     log_freq:  500 # set to bigger to not save so many media files 
     save_freq: 100
-    train_envs: 2
-    eval_envs: 2
+    train_envs: 1
+    eval_envs: 1
     replay_ratio: 128
     transitions_before_train: 100
     tensorboard_logging: True
@@ -49,10 +51,15 @@ resume_step: 24300
 dev:
     q_thres: 0.75  
     qagent_update_context: True
-    
+
 contexts:
+  num_update_itrs: 3
+  val_freq:   1000
+  update_freq: 2  # as compared to agent update
+  pass_down_context: False  
+
+  agent:
     with_action_context: False
-    pass_down_context: False 
     is_train: True
     embedding_size: 32  
     num_support: 3  #for TecNet
@@ -62,14 +69,40 @@ contexts:
     save_context: False 
     loss_mode:  'hinge' 
     prod_of_gaus_factors_over_batch: False # for PEARL 
+    encoder_cfg: ${encoder}
+  sampler:
+    batch_dim:             10     # dimension 'B'
+    samples_per_variation: 3      # dimension 'N' 
+    drop_last:             True 
+    sample_mode:           'variation' # or 'variation'
+  val_sampler:
+    batch_dim:             5      # actually let's fix this for all sweeping runs to get a fair comparision 
+    samples_per_variation: 2      # dimension 'N', has to limit to 2 due to datasplit
+    drop_last:             True 
+    sample_mode:           'variation' # or 'variation'
+
+dataset:
+  image_size:                 [128, 128]
+  root_dir:                   '/home/mandi/all_rlbench_data'
+  num_variations_per_task:    ${rlbench.variations} # loads all vars
+  num_episodes_per_variation: 20 # up to 20
+  num_steps_per_episode:      2 # 1, 2 for now  
+  exclude_tasks:              []
+  include_tasks:              ${tasks} # OR: set to [] or other options so it loads in more tasks than the trained one
+  data_augs:   
+    grayscale:        0
+    strong_jitter:    0 
+    weak_crop_scale:  [0.7, 0.9]
+    weak_crop_ratio:  [0.9, 1]
+  split:              [0.9, 0.1] # train/val split
 
 defaults:
     - method: C2FARM
-    - context_encoder: SlowRes
+    - encoder: SlowRes
 
 wandb:
     job_type: 'launch'
-    group:    'single'
+    group:    'meta_context'
 hydra:
     run:
         dir: ${framework.logdir}/ #${rlbench.task}/${method.name}

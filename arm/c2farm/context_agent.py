@@ -9,8 +9,11 @@ import numpy as np
 import math
 from abc import ABC, abstractmethod
 from arm.models.utils import make_optimizer # tie the optimizer definition closely with embedding nets 
+from omegaconf import DictConfig
+from einops import rearrange, reduce, repeat, parse_shape
 
 NAME = 'ContextEmbedderAgent'
+CONTEXT_KEY = 'demo_sample'
 
 class SequenceStrategy(ABC):
 
@@ -65,8 +68,10 @@ class ContextAgent(Agent):
                  save_context: bool = False, 
                  loss_mode: str = 'hinge', 
                  prod_of_gaus_factors_over_batch: bool = False, # for PEARL 
+                 encoder_cfg: DictConfig = None,
                  ):
         self._embedding_net = embedding_net
+        self._encoder_cfg = encoder_cfg
         self._camera_names = camera_names
         self._with_action_context = with_action_context
         self._sequence_strategy = StackOnChannel() # TODO(Mandi): other options here? 
@@ -90,19 +95,32 @@ class ContextAgent(Agent):
         """Train and Test time use the same build() """
         if device is None:
             device = torch.device('cpu') 
-        self._embedding_net = self._embedding_net
+        self._embedding_net.set_device(device)
         #self._embedding_net.build()
         #self._embedding_net.to(device).train(training)
         self._device = device
         self._zero = torch.tensor(0.0, device=device)
         # use a separate optimizer here to update the params with metric loss,
         # optionally, qattention agents also have optimizers that update the embedding params here
-        self._optimizer = make_optimizer(self._embedding_net)
+        self._optimizer, self._optim_params = make_optimizer(
+                self._embedding_net, self._encoder_cfg, return_params=True)
+ 
+    def act_for_replay(self, step, replay_sample):
+        """Use this to embed context only for qattention agent update"""
+        data = replay_sample[CONTEXT_KEY] 
+        # note shape here is (bsize, video_len, 3, 128, 128), preprocess_agent squeezed the task dimension 
+        b, n, ch, img_h, img_w = data.shape
+        model_inp = rearrange(data, 'b n ch h w -> b ch n h w').to(self._device)
+        embeddings = self._embedding_net(model_inp) # shape (b, embed_dim)
+        return ActResult(embeddings)
+
 
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:
         """observation batch may require different input preprocessing, handle here """
-        model_inp = observation['context_input'].to(self._device)
+        model_inp = observation[CONTEXT_KEY].to(self._device)
+        print(model_inp.shape) 
+        raise ValueError
         embeddings = self._embedding_net(model_inp)
         self._current_context = embeddings
         return ActResult(self._current_context)
@@ -164,7 +182,7 @@ class ContextAgent(Agent):
         return model_inp 
 
     def update(self, context_batch):
-        # this is be kept separate from replay_sample batch, s.t. we can contruct the
+        # this is kept separate from replay_sample batch, s.t. we can contruct the
         # batch for embedding loss with more freedom 
         model_inp = self._preprocess_inputs(context_batch)
         embeddings = self._embedding_net(model_inp)

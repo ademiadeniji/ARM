@@ -17,9 +17,6 @@ from torchvision.transforms import RandomAffine, ToTensor, Normalize, \
     RandomGrayscale, ColorJitter, RandomApply, RandomHorizontalFlip, GaussianBlur, RandomResizedCrop
 from torchvision.transforms import functional as TvF
 from torchvision.transforms.functional import resized_crop
-MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape((3,1,1))
-STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape((3,1,1))
-JITTER_FACTORS = {'brightness': 0.4, 'contrast': 0.4, 'saturation': 0.4, 'hue': 0.1} 
 
 import pickle as pkl
 from collections import defaultdict, OrderedDict 
@@ -41,6 +38,11 @@ EXCLUDE_KEYS = [
     'last_img',
     'all_imgs'
     ] # use this solely for visualization
+MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape((3,1,1))
+STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape((3,1,1))
+JITTER_FACTORS = {'brightness': 0.4, 'contrast': 0.4, 'saturation': 0.4, 'hue': 0.1} 
+
+
 def _load_and_maybe_resize(filename, size):
     image = Image.open(filename)
     if image.size[0] != size[0] or image.size[1] != size[1]:
@@ -122,7 +124,9 @@ class RLBenchDemoDataset(Dataset):
         if len(exclude_tasks) > 0:
             self._task_names = [name for name in all_names if name not in exclude_tasks]
         elif len(include_tasks) > 0:
-            self._task_names = [name for name in all_names if name in include_tasks]
+            self._task_names = include_tasks #[name for name in all_names if name in include_tasks]
+            for name in include_tasks:
+                assert name in all_names, f"Task name: {name} not found locally"
         else:
             self._task_names = all_names 
         self._all_file_names = []
@@ -175,6 +179,7 @@ class RLBenchDemoDataset(Dataset):
             after limited to {self._num_variations} variations for each task, \
             got {len(self._variation_idx_list)} total variations, \
             and {self.total_count} episodes.')
+        # print(self._idx_to_names)
 
         jitters = {k: v * data_augs.get('strong_jitter', 0) for k,v in JITTER_FACTORS.items()}
         strong_jitter = ColorJitter(**jitters) # due to tasks design it's prolly not a good idea to jitter color
@@ -243,6 +248,20 @@ class RLBenchDemoDataset(Dataset):
 
         return data_list
 
+    def sample_one_variation(self, task_id, variation_id):
+        variations = self._task_variation_tree[task_id]
+        episodes = variations[variation_id]
+        eps_idx = np.random.randint(0, len(episodes))
+        data = self.__getitem__( episodes[eps_idx] )
+        return data 
+
+    def sample_for_replay(self, task_ids, variation_ids):
+        data_list = [
+            self.sample_one_variation(task_id, variation_id) \
+                for task_id, variation_id in zip(task_ids, variation_ids)
+        ] 
+        return data_list
+    
     def get_idxs(self):
         return self._variation_idx_list, self._task_idx_list
 

@@ -1,6 +1,6 @@
 import torch 
 
-def make_optimizer(model, cfg):
+def make_optimizer(model, cfg, return_params=False):
     """
     Construct a stochastic gradient descent or ADAM optimizer with momentum.
     Details can be found in:
@@ -69,7 +69,7 @@ def make_optimizer(model, cfg):
     )
     method = cfg.OPTIM.METHOD
     if method == "sgd":
-        return torch.optim.SGD(
+        optimizer = torch.optim.SGD(
             optim_params,
             lr=cfg.OPTIM.BASE_LR,
             momentum=cfg.OPTIM.MOMENTUM,
@@ -78,14 +78,19 @@ def make_optimizer(model, cfg):
             nesterov=cfg.OPTIM.NESTEROV,
         )
     elif method == "adam":
-        return torch.optim.Adam(
+        optimizer = torch.optim.Adam(
             optim_params,
             lr=cfg.OPTIM.BASE_LR,
             betas=(0.9, 0.999),
             weight_decay=cfg.OPTIM.WEIGHT_DECAY,
-        )
+        ) 
 
     else:
         raise NotImplementedError(
             "Does not support {} optimizer".format(method)
         )
+    
+    if return_params:
+        return optimizer, optim_params
+         
+    return optimizer

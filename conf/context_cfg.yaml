@@ -4,7 +4,7 @@ train:
   log_dir:    '/home/mandi/ARM/cxt_log/'
   overwrite:  False
   log_path:   ???
-  run_name:  'burn'
+  run_name:   'burn'
   save_freq:  1000
   vis_freq:   2000 # must generate with saved model checkpoints 
   val_freq:   500

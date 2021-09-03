@@ -15,11 +15,14 @@ class PreprocessAgent(Agent):
         self._context_agent = context_agent 
 
     def build(self, training: bool, device: torch.device = None, context_device: torch.device = None):
-        self._pose_agent.build(training, device)
-        self._device = device 
+        # NOTE build context agent first to get its optim paramters
         if self._context_agent is not None:
             context_device = context_device if context_device is not None else device 
             self._context_agent.build(training, context_device)
+        
+        self._pose_agent.build(training, device)
+        self._device = device 
+        
 
     def _norm_rgb_(self, x):
         return (x.float() / 255.0) * 2.0 - 1.0
@@ -37,7 +40,7 @@ class PreprocessAgent(Agent):
 
     def update_context(self, step: int, context_batch: dict) -> dict:
         self._context_batch = context_batch 
-        return self._context_agent.update_context(step, context_batch)
+        return self._context_agent.update(step, context_batch)
 
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:

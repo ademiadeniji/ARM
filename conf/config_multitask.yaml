@@ -3,15 +3,16 @@
 7_task_phone: [pick_up_cup,stack_wine,pick_and_lift,put_rubbish_in_bin,reach_target,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
 7_task_cup: [phone_on_base,stack_wine,pick_and_lift,put_rubbish_in_bin,reach_target,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand]
 
-tasks: ???
-short_names: ??? 
+tasks: 'many'
+exclude_tasks: False
+short_names: ''
 run_name: burn 
 log_path: ??? 
 rlbench:
     task: ''
     tasks: ${tasks}
     demos: 10
-    demo_path: /home/mandi/ARM/data
+    demo_path: /home/mandi/all_rlbench_data
     episode_length: 10
     cameras: [front]
     camera_resolution: [128, 128]
@@ -23,19 +24,21 @@ replay:
     prioritisation: True
     use_disk: False
     path: '/tmp/arm_sanity/replay'  # Only used when use_disk is True.
-    share_across_tasks: False
+    share_across_tasks: True 
 
 framework:
-    log_freq: 100
-    train_envs: 2
-    eval_envs: 2
+    log_freq: 1000
+    save_freq: 100
+    train_envs: 3
+    eval_envs: 3
     replay_ratio: 128
     transitions_before_train: 100
     tensorboard_logging: True
     csv_logging: False
     wandb_logging: True
-    training_iterations: 5000
+    training_iterations: 10000
     gpu: 0
+    env_runner_gpu: 1 # split the device list so env runner doesn't use the same gpu as training 
     logdir: '/home/mandi/ARM/log/'
     seeds: 1
     resume: ${resume}
@@ -52,7 +55,7 @@ resume_step: 24300
 
 dev:
     q_thres: 0.75 
-    save_freq: 100
+    
 contexts:
     with_action: False
     context_size: 32 
