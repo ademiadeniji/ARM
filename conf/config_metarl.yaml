@@ -1,4 +1,4 @@
-tasks: ['push_button']
+tasks: ['pick_up_cup']
 run_name: burn 
 log_path: ??? 
 tasks_name: ???
@@ -6,6 +6,7 @@ rlbench:
     tasks: ${tasks}
     all_tasks: ???      # [task_A, task_B,...]
     all_variations: ??? # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
+    id_to_tasks: ??
     variations: -1
     demos: 3
     demo_path: /home/mandi/all_rlbench_data
@@ -27,12 +28,13 @@ framework:
     save_freq: 100
     train_envs: 1
     eval_envs: 1
+    env_runner_gpu: 2
     replay_ratio: 128
     transitions_before_train: 100
     tensorboard_logging: True
     csv_logging: False
     wandb_logging: True
-    training_iterations: 5000
+    training_iterations: 10000
     gpu: 0
     logdir: '/home/mandi/ARM/log/'
     seeds: 1
@@ -53,15 +55,14 @@ dev:
     qagent_update_context: True
 
 contexts:
-  num_update_itrs: 3
+  num_update_itrs: 5
   val_freq:   1000
   update_freq: 2  # as compared to agent update
-  pass_down_context: False  
-
+  pass_down_context: True 
   agent:
     with_action_context: False
     is_train: True
-    embedding_size: 32  
+    embedding_size: 32 
     num_support: 3  #for TecNet
     num_query:  1
     margin:     1.0
@@ -71,15 +72,12 @@ contexts:
     prod_of_gaus_factors_over_batch: False # for PEARL 
     encoder_cfg: ${encoder}
   sampler:
-    batch_dim:             10     # dimension 'B'
+    batch_dim:             10    # dimension 'B'
     samples_per_variation: 3      # dimension 'N' 
     drop_last:             True 
     sample_mode:           'variation' # or 'variation'
-  val_sampler:
-    batch_dim:             5      # actually let's fix this for all sweeping runs to get a fair comparision 
-    samples_per_variation: 2      # dimension 'N', has to limit to 2 due to datasplit
-    drop_last:             True 
-    sample_mode:           'variation' # or 'variation'
+    val_batch_dim:             5      # actually let's fix this for all sweeping runs to get a fair comparision 
+    val_samples_per_variation: 2      # dimension 'N', has to limit to 2 due to datasplit
 
 dataset:
   image_size:                 [128, 128]
@@ -101,6 +99,7 @@ defaults:
     - encoder: SlowRes
 
 wandb:
+    project: 'ContextARM'
     job_type: 'launch'
     group:    'meta_context'
 hydra:

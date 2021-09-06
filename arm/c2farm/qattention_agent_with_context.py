@@ -23,7 +23,8 @@ from arm.c2farm.voxel_grid import VoxelGrid
 from itertools import chain
 
 from arm.c2farm.context_agent import CONTEXT_KEY
-NAME = 'QAttentionAgent'
+from yarr.utils.multitask_rollout_generator import TASK_ID, VAR_ID
+NAME = 'QAttention'
 REPLAY_BETA = 1.0
  
  
@@ -73,6 +74,7 @@ class QFunction(nn.Module):
 
     def forward(self, x, proprio, pcd,
                 bounds=None, prev_layer_voxel_grid=None, context=None):
+        assert context is not None, 'Must give context input'
         # x will be list of list (list of [rgb, pcd])
         b = x[0][0].shape[0]
         pcd_flat = torch.cat(
@@ -124,6 +126,7 @@ class QAttentionContextAgent(Agent):
                  lambda_weight_l2: float = 0.0,
                  context_agent: Agent = None, 
                  update_context_agent: bool = True,
+                 pass_down_context: bool = True,
                  ):
         self._layer = layer
         self._lambda_trans_qreg = lambda_trans_qreg
@@ -154,6 +157,7 @@ class QAttentionContextAgent(Agent):
 
         self._context_agent = context_agent
         self._update_context_agent = update_context_agent
+        self._pass_down_context = pass_down_context
 
     def build(self, training: bool, device: torch.device = None):
         if device is None:
@@ -288,9 +292,13 @@ class QAttentionContextAgent(Agent):
 
     def update(self, step: int, replay_sample: dict) -> dict:
         #context_sample = self._preprocess_context_inputs(replay_sample)
-       
-        context = self._context_agent.act_for_replay(step, replay_sample).action.to(self._device)
-
+        # each layer Might be also update context embedder's params via here 
+        if self._layer > 0 and self._pass_down_context:
+            context = replay_sample['prev_layer_encoded_context'].detach()
+             
+        else:
+            context = self._context_agent.act_for_replay(step, replay_sample).action.to(self._device) 
+        
         action_trans = replay_sample['trans_action_indicies'][:, -1,
                        self._layer * 3:self._layer * 3 + 3]
         action_rot_grip = replay_sample['rot_grip_action_indicies'][:, -1].long()
@@ -309,8 +317,7 @@ class QAttentionContextAgent(Agent):
             bounds_tp1 = torch.cat(
                 [cp_tp1 - self._bounds_offset, cp_tp1 + self._bounds_offset],
                 dim=1)
-            if self._pass_down_context:
-                context = replay_sample['prev_layer_encoded_context']
+            
 
         proprio = proprio_tp1 = None
         if self._include_low_dim_state:
@@ -321,6 +328,7 @@ class QAttentionContextAgent(Agent):
         terminal = replay_sample['terminal'].float() - replay_sample['timeout'].float()
 
         obs, obs_tp1, pcd, pcd_tp1 = self._preprocess_inputs(replay_sample)
+        #print(context.shape)
 
         q, q_rot_grip, voxel_grid, encoded_context = self._q(
             obs, proprio, pcd, 
@@ -333,11 +341,13 @@ class QAttentionContextAgent(Agent):
         with_rot_and_grip = rot_and_grip_indicies is not None
 
         with torch.no_grad():
-            q_tp1_targ, q_rot_grip_tp1_targ, _ = self._q_target(
+            q_tp1_targ, q_rot_grip_tp1_targ, voxel_grid_tp1_targ, encoded_context_tp1_targ = self._q_target(
                 obs_tp1, proprio_tp1, pcd_tp1, bounds_tp1,
-                replay_sample.get('prev_layer_voxel_grid_tp1', None))
+                replay_sample.get('prev_layer_voxel_grid_tp1', None),
+                context=context
+                )
 
-            q_tp1, q_rot_grip_tp1, voxel_grid_tp1 = self._q(
+            q_tp1, q_rot_grip_tp1, voxel_grid_tp1, encoded_context_tp1 = self._q(
                 obs_tp1, proprio_tp1, pcd_tp1, bounds_tp1,
                 prev_layer_voxel_grid=replay_sample.get('prev_layer_voxel_grid_tp1', None),
                 context=context)
@@ -398,6 +408,7 @@ class QAttentionContextAgent(Agent):
         priority /= priority.max()
         prev_priority = replay_sample.get('priority', 0)
 
+        # print('\n done updating layer:', self._layer)
         return {
             'priority': priority + prev_priority,
             'prev_layer_voxel_grid': voxel_grid,
@@ -407,6 +418,10 @@ class QAttentionContextAgent(Agent):
 
     def act(self, step: int, context_res: ActResult, observation: dict,
             deterministic=False) -> ActResult:
+
+        self._task_id = observation[TASK_ID]
+        self._variation_id = observation[VAR_ID]
+
         deterministic = True  # TODO: Don't explicitly explore.
         bounds = self._coordinate_bounds
 
@@ -504,11 +519,13 @@ class QAttentionContextAgent(Agent):
 
     def act_summaries(self) -> List[Summary]:
         return [
-            ImageSummary('%s/act_Qattention' % self._name,
-                         transforms.ToTensor()(visualise_voxel(
-                             self._act_voxel_grid.cpu().numpy(),
-                             self._act_qvalues.cpu().numpy(),
-                             self._act_max_coordinate.cpu().numpy())))]
+            ImageSummary(
+                f'task{self._task_id}_var{self._variation_id}_{self._name}/act_Qattention',
+                transforms.ToTensor()(visualise_voxel(
+                    self._act_voxel_grid.cpu().numpy(),
+                    self._act_qvalues.cpu().numpy(),
+                    self._act_max_coordinate.cpu().numpy())
+                    ))]
 
     def load_weights(self, savedir: str):
         self._q.load_state_dict(

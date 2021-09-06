@@ -114,15 +114,15 @@ class ContextAgent(Agent):
         embeddings = self._embedding_net(model_inp) # shape (b, embed_dim)
         return ActResult(embeddings)
 
-
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:
         """observation batch may require different input preprocessing, handle here """
-        model_inp = observation[CONTEXT_KEY].to(self._device)
-        print(model_inp.shape) 
-        raise ValueError
+        # print('context agent input:', observation.keys())
+         
+        data = observation[CONTEXT_KEY].to(self._device)
+        model_inp = rearrange(data, 'n ch h w -> 1 ch n h w')
         embeddings = self._embedding_net(model_inp)
-        self._current_context = embeddings
+        self._current_context = embeddings.detach().requires_grad_(False)
         return ActResult(self._current_context)
         
     def set_new_context(self, observation: dict):
@@ -179,18 +179,29 @@ class ContextAgent(Agent):
         assert len(data.shape) == 6, 'Must be shape (b, n, num_frames, channels, img_h, img_w) '
         b, k, n, ch, img_h, img_w = data.shape 
         model_inp = rearrange(data, 'b k n ch h w -> (b k) ch n h w').to(self._device)
-        return model_inp 
+        return model_inp, b, k 
 
-    def update(self, context_batch):
+    def update(self, step, context_batch):
         # this is kept separate from replay_sample batch, s.t. we can contruct the
         # batch for embedding loss with more freedom 
-        model_inp = self._preprocess_inputs(context_batch)
+        model_inp, b, k = self._preprocess_inputs(context_batch)
+         
         embeddings = self._embedding_net(model_inp)
+        self._mean_embedding = embeddings.mean()
+        embeddings = rearrange(embeddings, '(b k) d -> b k d', b=b, k=k)
+ 
         if self._loss_mode == 'hinge':
-            emb_loss = self._compute_hinge_loss(embeddings)
+            update_dict = self._compute_hinge_loss(embeddings)
         else:
             raise NotImplementedError
 
+        return update_dict
+
+    def validate_context(self, step, context_batch):
+        with torch.no_grad():
+            val_dict = self.update(step, context_batch)
+        return val_dict
+ 
     def train_update(self, step: int, replay_sample: dict) -> dict: 
         if self._current_context is not None:
             b = replay_sample['action'].shape[0]
@@ -249,8 +260,8 @@ class ContextAgent(Agent):
             'emb_loss': self._loss
         }
 
-    def _compute_hinge_loss(self, embeddings):
-        b, k, _ = embeddings.shape
+    def _compute_hinge_loss(self, embeddings): 
+        b, k, d = embeddings.shape 
         embeddings_norm = embeddings / embeddings.norm(dim=2, p=2, keepdim=True)
 
         support_embeddings = embeddings_norm[:, :self._num_support]

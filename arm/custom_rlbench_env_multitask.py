@@ -15,11 +15,13 @@ from yarr.envs.rlbench_env import MultiTaskRLBenchEnv
 from yarr.utils.observation_type import ObservationElement
 from yarr.utils.transition import Transition
 
+from collections import defaultdict
+
 RECORD_EVERY = 20
 
 
 class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
-
+    """ add more stringent VideoSummary logging to save storage """
     def __init__(self,
                  task_classes: List[Type[Task]],
                  task_names: List[str],
@@ -30,7 +32,10 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
                  channels_last=False,
                  headless=True,
                  swap_task_every: int = 1,
-                 reward_scale=100):
+                 reward_scale: int = 100,
+                 num_video_limit: int = 3, # don't log too many videos of the same reward
+                 
+                 ):
         super(CustomMultiTaskRLBenchEnv, self).__init__(
             task_classes, task_names, 
             observation_config, action_mode,
@@ -43,6 +48,8 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
         self._recorded_images = []
         self._episode_length = episode_length
         self._i = 0
+        self._num_video_limit = num_video_limit
+        self._logged_videos = defaultdict(list)
 
     @property
     def observation_elements(self) -> List[ObservationElement]:
@@ -131,8 +138,12 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
                 self._record_current_episode):
             self._append_final_frame(success)
             vid = np.array(self._recorded_images).transpose((0, 3, 1, 2))
-            summaries.append(VideoSummary('episode_rollout', vid, fps=30))
-        return Transition(obs, reward, terminal, summaries=summaries)
+            vid_name = f'{self._active_task_id}_var{self._active_variation_id}_rollout_rew{int(reward)}'
+            if len(self._logged_videos[vid_name]) < self._num_video_limit:
+                summaries.append(VideoSummary(
+                    vid_name, vid, fps=30))
+                self._logged_videos[vid_name].append(vid)
+        return Transition(obs, reward, terminal, summaries=summaries) 
 
     def reset_to_demo(self, i):
         d, = self._task.get_demos(

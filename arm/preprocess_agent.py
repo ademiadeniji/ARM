@@ -41,14 +41,20 @@ class PreprocessAgent(Agent):
     def update_context(self, step: int, context_batch: dict) -> dict:
         self._context_batch = context_batch 
         return self._context_agent.update(step, context_batch)
+    
+    def validate_context(self, step: int, context_batch: dict) -> dict:
+        return self._context_agent.validate_context(step, context_batch)
 
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:
-        observation = {k: torch.tensor(v).to(self._device) for k, v in observation.items()}
+        # print('preprocess agent input:', observation.keys())
+        observation = {
+            k: v.clone().detach().to(self._device) if isinstance(v, torch.Tensor) else \
+            torch.tensor(v).to(self._device)  for k, v in observation.items()}
         for k, v in observation.items():
             if 'rgb' in k:
                 observation[k] = self._norm_rgb_(v)
-        # if context is needed the pose_agent will also have access to context_agent to handle it
+        # if context is needed for every qattention, will also have access to context_agent to handle it
         act_res = self._pose_agent.act(step, observation, deterministic)
         act_res.replay_elements.update({'demo': False})
         return act_res

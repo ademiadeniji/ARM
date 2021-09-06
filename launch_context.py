@@ -3,7 +3,7 @@ Launch meta-rl agents
 Note "solvable" tasks with >1 variations:
 - pick_up_cup: 20
 - pick_and_lift: 20 
-- push_button: 18 (push_buttons has 50)
+- push_button: 18 (push_buttons has 50), this one is super easy 
 - lamp_on: 20
 - lamp_off: 20
 - reach_target: 20 
@@ -47,14 +47,34 @@ from yarr.utils.multitask_rollout_generator import RolloutGeneratorWithContext
 from launch_multitask import _create_obs_config, _modify_action_min_max
  
 from arm.models.slowfast  import TempResNet
-from arm.demo_dataset import MultiTaskDemoSampler, RLBenchDemoDataset, collate_by_id
+from arm.demo_dataset import MultiTaskDemoSampler, RLBenchDemoDataset, collate_by_id, PyTorchIterableDemoDataset
 from arm.models.utils import make_optimizer 
 from functools import partial
 from torch.utils.data import DataLoader
+from torch.multiprocessing import Lock, cpu_count
 
 ACTION_MODE = ActionMode(
         ArmActionMode.ABS_EE_POSE_PLAN_WORLD_FRAME,
         GripperActionMode.OPEN_AMOUNT)
+LOG_CONFIG_KEYS = ['rlbench', 'replay', 'framework', 'contexts', 'dataset']
+
+def make_loader(cfg, mode, dataset):
+    variation_idxs, task_idxs = dataset.get_idxs()
+    sampler = MultiTaskDemoSampler(
+        variation_idxs_list=variation_idxs, # 1-1 maps from each variation to idx in dataset e.g. [[0,1], [2,3], [4,5]] belongs to 3 variations but 2 tasks
+        task_idxs_list=task_idxs,      # 1-1 maps from each task to all its variations e.g. [[0,1,2,3], [4,5]] collects variations by task
+        **(cfg.val_sampler if mode == 'val' else cfg.sampler),
+    )
+
+    collate_func = partial(collate_by_id, cfg.sampler.sample_mode+'_id')
+    loader = DataLoader(
+            dataset, 
+            batch_sampler=sampler,
+            num_workers=min(11, cpu_count()),
+            worker_init_fn=lambda w: np.random.seed(np.random.randint(2 ** 29) + w),
+            collate_fn=collate_func,
+            )
+    return loader 
 
 def run_seed(
     cfg: DictConfig, 
@@ -130,7 +150,7 @@ def run_seed(
 
     wrapped_replays = [PyTorchReplayBuffer(r) for r in replays]
     # NOTE: stat accumulator still groups by task, not by variation
-    stat_accum = MultiTaskAccumulator(cfg.tasks, eval_video_fps=30)
+    stat_accum = MultiTaskAccumulator(cfg.tasks, eval_video_fps=30) # still using task-based logging, too many variations
  
     logdir = join(cfg.log_path, 'seed%d' % seed)
     os.makedirs(logdir, exist_ok=False)
@@ -149,6 +169,12 @@ def run_seed(
  
     device_list = [ i for i in range(torch.cuda.device_count()) ]
     assert len(device_list) > 1, 'Must use multiple GPUs'
+    env_gpus = None 
+    if len(device_list) > 1:
+        print('Total visible GPUs idxed: ', device_list)
+        env_gpus = device_list[cfg.framework.env_runner_gpu: ]
+        print('Environment runner using GPUs idxed: ', env_gpus)
+
     env_runner = EnvRunner(
         train_env=env, 
         agent=agent, 
@@ -160,13 +186,41 @@ def run_seed(
         episode_length=cfg.rlbench.episode_length,
         stat_accumulator=stat_accum,
         weightsdir=weightsdir,
-        device_list=device_list[2:]) # ugly hack, leave at least 2 gpus for the agents
+        max_fails=1,
+        device_list=env_gpus
+        ) # ugly hack, leave at least 2 gpus for the agents
 
-    # run = wandb.init(project='rlbench', job_type='patched', sync_tensorboard=True)
+    if cfg.framework.wandb_logging:
+        run = wandb.init(**cfg.wandb)
+        run.name = "/".join( cfg.log_path.split('/')[-2:] )
+        cfg_dict = {}
+        for key in LOG_CONFIG_KEYS:
+            for sub_key in cfg[key].keys():
+                cfg_dict[key+'/'+sub_key] = cfg[key][sub_key]
+        run.config.update(cfg_dict)
+        run.save()
+
+    logging.info('\n Making dataloaders for context batch training')
+    # ctxt_train_loader = make_loader(cfg.contexts, 'train', train_demo_dataset)
+    # ctxt_val_loader  = make_loader(cfg.contexts,'val', val_demo_dataset)
+    train_demo_dataset = PyTorchIterableDemoDataset(
+        demo_dataset=train_demo_dataset,
+        batch_dim=cfg.contexts.sampler.batch_dim,
+        samples_per_variation=cfg.contexts.sampler.samples_per_variation,
+        sample_mode=cfg.contexts.sampler.sample_mode,
+        )
+    val_demo_dataset = PyTorchIterableDemoDataset(
+        demo_dataset=val_demo_dataset,
+        batch_dim=cfg.contexts.sampler.val_batch_dim,
+        samples_per_variation=cfg.contexts.sampler.val_samples_per_variation,
+        sample_mode=cfg.contexts.sampler.sample_mode,
+        )
 
     train_runner = PyTorchTrainContextRunner(
         agent, env_runner,
-        wrapped_replays, device, replay_split, stat_accum,
+        wrapped_replays, 
+        device, 
+        replay_split, stat_accum,
         iterations=cfg.framework.training_iterations,
         save_freq=cfg.framework.save_freq, 
         log_freq=cfg.framework.log_freq, 
@@ -177,23 +231,14 @@ def run_seed(
         tensorboard_logging=cfg.framework.tensorboard_logging,
         csv_logging=cfg.framework.csv_logging,
         context_cfg=cfg.contexts,
+        # ctxt_train_loader=ctxt_train_loader,
+        # ctxt_val_loader=ctxt_val_loader,
         train_demo_dataset=train_demo_dataset,
         val_demo_dataset=val_demo_dataset,
+        wandb_logging=cfg.framework.wandb_logging,
+        context_device=torch.device("cuda:%d" % (cfg.framework.gpu+1))
         )
-    # train_runner = PyTorchTrainRunner(
-    #     agent, env_runner,
-    #     wrapped_replays, device, replay_split, stat_accum,
-    #     iterations=cfg.framework.training_iterations,
-    #     log_freq=cfg.framework.log_freq, 
-    #     logdir=logdir,
-    #     weightsdir=weightsdir,
-    #     replay_ratio=replay_ratio,
-    #     transitions_before_train=cfg.framework.transitions_before_train,
-    #     tensorboard_logging=cfg.framework.tensorboard_logging,
-    #     csv_logging=cfg.framework.csv_logging,
-    #     wandb_logging=cfg.framework.wandb_logging,
-    #     save_freq=cfg.framework.save_freq,
-    #     )
+ 
     train_runner.start()
     del train_runner
     del env_runner
@@ -204,14 +249,14 @@ def run_seed(
 def main(cfg: DictConfig) -> None: 
     if cfg.framework.gpu is not None and torch.cuda.is_available():
         device = torch.device("cuda:%d" % cfg.framework.gpu)
-        torch.cuda.set_device(cfg.framework.gpu)
+       # torch.cuda.set_device(cfg.framework.gpu)
         torch.backends.cudnn.enabled = torch.backends.cudnn.benchmark = True
     else:
         device = torch.device("cpu")
     logging.info('Using device %s.' % str(device))
 
-    
-    tasks = cfg.tasks 
+    cfg.tasks = sorted(cfg.tasks)
+    tasks = cfg.tasks
     task_classes = [task_file_to_task_class(t) for t in tasks]
 
     cfg.rlbench.cameras = cfg.rlbench.cameras if isinstance(
@@ -236,6 +281,7 @@ def main(cfg: DictConfig) -> None:
         all_tasks.append(name)
         var_count += count
         all_variations.append([ f"{name}_{c}" for c in range(count) ])
+        #print(name, tsk ,all_variations)
  
         logging.info(f"Task: {name}, using {count} variations")
     # NOTE(Mandi) need to give a "blank" vanilla env so you don't get error from env_runner.spinup_train_and_eval
@@ -246,16 +292,28 @@ def main(cfg: DictConfig) -> None:
         episode_length=cfg.rlbench.episode_length, headless=True)
      
     cfg.rlbench.all_tasks = all_tasks
+    cfg.rlbench.id_to_tasks = [(i, tsk) for i, tsk in enumerate(all_tasks)]
     cfg.rlbench.all_variations = all_variations
     all_task_ids = [ i for i in range(len(all_tasks)) ]
 
     tasks_name = "-".join(cfg.tasks) + f"-{var_count}var"
     cfg.tasks_name = tasks_name
     logging.info(f"Using tasks: {tasks_name} and limit {cfg.rlbench.variations} variations per task")
+
+    # sanity check context dataset sampler
+    if cfg.contexts.sampler.sample_mode == 'variation':
+        assert cfg.contexts.sampler.batch_dim <= sum([len(l) for l in all_variations]) , \
+            f'Cannot construct a batch dim {cfg.contexts.sampler.batch_dim} larger than num. of {sum([len(l) for l in all_variations])} avalible variations'
+    elif cfg.contexts.sampler.sample_mode == 'task':
+        assert cfg.contexts.sampler.batch_dim <= sum([len(l) for l in all_tasks]), \
+            f'Cannot construct a batch dim {cfg.contexts.sampler.batch_dim} larger than num. of {sum([len(l) for l in all_tasks])} avalible tasks'
     
 
     cwd = os.getcwd()
-    log_path = join(cwd, tasks_name, cfg.method.name+'-'+cfg.run_name)
+    cfg.run_name =  f"Context-step{cfg.dataset.num_steps_per_episode}-freq{cfg.contexts.update_freq}-" + \
+                        f"iter{cfg.contexts.num_update_itrs}-embed{cfg.contexts.agent.embedding_size}-" + \
+                        cfg.run_name
+    log_path = join(cwd, tasks_name, cfg.run_name)
     os.makedirs(log_path, exist_ok=True) 
     existing_seeds = len(list(filter(lambda x: 'seed' in x, os.listdir(log_path))))
     logging.info('Logging to:' + log_path)
@@ -267,6 +325,7 @@ def main(cfg: DictConfig) -> None:
     train_demo_dataset = RLBenchDemoDataset(obs_config=obs_config, mode='train', **cfg.dataset)
     val_demo_dataset = RLBenchDemoDataset(obs_config=obs_config, mode='val', **cfg.dataset)
     
+
     # some sanity check to make sure task_ids from offline dataset and env are matched
     for i, (one_task, its_variations) in enumerate(zip(all_tasks, all_variations)):
         for task_var in its_variations:

@@ -30,6 +30,7 @@ from torch.utils.data import DataLoader
 REWARD_SCALE = 100.0
 TASK_ID='task_id'
 VAR_ID='variation_id'
+CONTEXT_SIZE=128
 
 
 def create_replay(batch_size: int, timesteps: int, prioritisation: bool,
@@ -79,7 +80,6 @@ def create_replay(batch_size: int, timesteps: int, prioritisation: bool,
         extra_replay_elements=extra_replay_elements
     )
     return replay_buffer
-
 
 def _get_action(
         obs_tp1: Observation,
@@ -338,7 +338,7 @@ def create_agent_with_context(cfg: DictConfig, env,
                 dense_feats=128,
                 activation=cfg.method.activation,
                 low_dim_size=env.low_dim_state_len,
-                context_size=cfg.contexts.agent.embedding_size,
+                context_size=CONTEXT_SIZE,
                 )
         else:
             last = depth == len(cfg.method.voxel_sizes) - 1
@@ -353,7 +353,7 @@ def create_agent_with_context(cfg: DictConfig, env,
                 activation=cfg.method.activation,
                 low_dim_size=env.low_dim_state_len,
                 include_prev_layer=include_prev_layer,
-                context_size=LATENT_SIZE if cfg.contexts.pass_down_context else cfg.contexts.agent.embedding_size,
+                context_size=LATENT_SIZE if cfg.contexts.pass_down_context else CONTEXT_SIZE #cfg.contexts.agent.embedding_size,
                 )
 
         qattention_agent = QAttentionContextAgent(
@@ -379,7 +379,8 @@ def create_agent_with_context(cfg: DictConfig, env,
             grad_clip=0.01,
             gamma=0.99,
             context_agent=context_agent, 
-            update_context_agent=(cfg.dev.qagent_update_context and depth == 0)
+            update_context_agent=(cfg.dev.qagent_update_context and depth == 0),
+            pass_down_context=cfg.contexts.pass_down_context
         )
         qattention_agents.append(qattention_agent)
 

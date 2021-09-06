@@ -25,7 +25,7 @@ pip install -r requirements.txt
 New: for Slow resnets
 - [fvcore](https://github.com/facebookresearch/fvcore/): `pip install 'git+https://github.com/facebookresearch/fvcore'`
 
-- `pip install einops MulticoreTSNE pandas bokeh`
+- `pip install einops MulticoreTSNE pandas bokeh fvcore matplotlib`
 - `conda install jupyter`
 
 
@@ -34,8 +34,15 @@ New: for Slow resnets
 Be sure to have RLBench demos saved on your machine before proceeding. To generate demos for a task, go to the 
 tools directory in RLBench _(rlbench/tools)_, and run:
 ```bash
-python dataset_generator.py --save_path=/mnt/my/save/dir --tasks=take_lid_off_saucepan --image_size=128,128 \
---renderer=opengl --episodes_per_task=100 --variations=1 --processes=1
+DATAP=/home/mandi/front_rlbench_data
+python dataset_generator.py --save_path=$DATAP --tasks=lamp_on --image_size=128,128 \
+--renderer=opengl --episodes_per_task=20 --variations=-1 --processes=-1
+
+
+TASKS=
+python ../RLBench/tools/dataset_frontcam_gen.py --save_path=$DATAP --image_size=128,128 \
+--renderer=opengl --episodes_per_task=20 --variations=-1 --processes=20
+
 ```
 
 

@@ -9,7 +9,8 @@ import copy
 import torch
 from os import listdir
 from os.path import join, expanduser 
-from torch.utils.data import Dataset, Sampler, DataLoader, SubsetRandomSampler, RandomSampler, BatchSampler
+from torch.utils.data import Sampler, SubsetRandomSampler, RandomSampler, BatchSampler
+from torch.utils.data import Dataset, IterableDataset, DataLoader
 from torch.utils.data._utils.collate import default_collate 
 from torch.multiprocessing import cpu_count
 from torchvision import transforms
@@ -41,7 +42,6 @@ EXCLUDE_KEYS = [
 MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape((3,1,1))
 STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape((3,1,1))
 JITTER_FACTORS = {'brightness': 0.4, 'contrast': 0.4, 'saturation': 0.4, 'hue': 0.1} 
-
 
 def _load_and_maybe_resize(filename, size):
     image = Image.open(filename)
@@ -363,6 +363,9 @@ class RLBenchDemoDataset(Dataset):
         plt.tight_layout()
         plt.savefig('all_tasks.png')
 
+    def sample_context_batch(self, batch_dim, num_variations, sample_mode='variation'):
+        """ samples b, k, num_steps, 3, 128, 128 """
+
 
 class MultiTaskDemoSampler(Sampler):
     """
@@ -434,6 +437,77 @@ class MultiTaskDemoSampler(Sampler):
                 batch = []
   
 
+class PyTorchIterableDemoDataset(IterableDataset):
+    """ See YARR.replay.wrappers, work around the need for Sampler so multiprocessing can pickle"""
+    def __init__(
+        self, 
+        batch_dim: int = 2,       # dimension B, depends on sample mode: could either be num of distinct tasks in a batch OR num of variations 
+        samples_per_variation: int = 2, # dimension 'N'  
+        sample_mode: str = 'variation', # either sample by task or by variations 
+        demo_dataset: RLBenchDemoDataset = None ,
+        ):
+        
+        self._demo_dataset = demo_dataset 
+        self._batch_dim   = batch_dim # can either be num of vars or tasks
+        self._samples_per_variation = samples_per_variation 
+        self._sample_mode = sample_mode 
+
+        if sample_mode == 'task':
+            tocopy = demo_dataset._task_idx_list 
+        elif sample_mode == 'variation':
+            tocopy = demo_dataset._variation_idx_list 
+            # NOTE: it's possible that different variations in the same task get sampled together
+        else:
+            raise ValueError(f'Got unsupported request to sample a batch by {sample_mode}')
+         
+        self._sample_mode = sample_mode 
+        self._collate_id = sample_mode + '_id'
+        self._batch_idx_list = copy.deepcopy(tocopy) 
+        [random.shuffle(idxs) for idxs in self._batch_idx_list]
+          
+        self._num_total_variations = len(demo_dataset._variation_idx_list)
+        self._num_total_tasks = len(demo_dataset._task_idx_list) 
+        self._list_idxs = [i for i in range(len(self._batch_idx_list))]
+        for i, idxs in enumerate(self._batch_idx_list):
+            assert len(idxs) >= self._samples_per_variation, f'Variation {i} does not have enough samples for even one iteration!'
+    
+    def _generator(self):
+        while True:
+            yield self.sample_context_batch()
+    
+    def sample_context_batch(self):
+        # taken from **idx** sampler code, but no exhaustion or removing
+        batch = []
+        var_idxs = np.random.choice(
+            self._list_idxs, 
+            size=self._batch_dim, 
+            replace=False)
+        for idx in var_idxs: 
+            episode_idxs = np.random.choice(self._batch_idx_list[idx], size=self._samples_per_variation, replace=False) 
+            batch.append(episode_idxs)
+        assert len(batch) == self._batch_dim
+
+        data_batch = []
+        for episode_idxs in batch:
+            # keys = self._demo_dataset.__getitem__(episode_idxs[0]).keys()
+            # collated = {
+            #     key: torch.cat
+            # }
+            # for idx in episode_idxs: # this is absolute indices
+            #     data_batch.append(
+            #         self._demo_dataset.__getitem__(idx)
+            #     )
+            all_eps_data = [self._demo_dataset.__getitem__(idx) for idx in episode_idxs]
+            data_batch.extend(all_eps_data) 
+        return collate_by_id(self._collate_id, data_batch)
+
+    def sample_for_replay(self, task_ids, variation_ids):
+        return self._demo_dataset.sample_for_replay(task_ids, variation_ids)
+
+    def __iter__(self):
+        return iter(self._generator())
+
+
 
 if __name__ == '__main__':
     one_cam = CameraConfig(
@@ -457,32 +531,38 @@ if __name__ == '__main__':
         mode='train'
         )
 
-    one_load = demo_dataset[0]
+    # one_load = demo_dataset[0]
     #print( [(k, v.shape) for k, v in one_load.items()] )
     #demo_dataset.sanity_check()
     # for path in demo_dataset._all_file_names:
     #     demo_dataset._load_one_episode(path)
 
-    variation_idxs, task_idxs = demo_dataset.get_idxs()
-    print(f'total variation idxs {len(variation_idxs)}, total task ids: {len(task_idxs)}')
-    sample_mode = 'variation'
-    sampler = MultiTaskDemoSampler(
-        variation_idxs_list=variation_idxs, # 1-1 maps from each variation to idx in dataset e.g. [[0,1], [2,3], [4,5]] belongs to 3 variations but 2 tasks
-        task_idxs_list=task_idxs,      # 1-1 maps from each task to all its variations e.g. [[0,1,2,3], [4,5]] collects variations by task
-        batch_dim=5, # dimension 'B'
-        samples_per_variation=6, # dimension 'N' 
-        drop_last=True,
-        sample_mode=sample_mode,
-    )
-    collate_func = partial(collate_by_id, sample_mode+'_id')
-    train_loader = DataLoader(
-            demo_dataset, 
-            batch_sampler=sampler,
-            num_workers=5,
-            worker_init_fn=lambda w: np.random.seed(np.random.randint(2 ** 29) + w),
-            collate_fn=collate_func,  
+    # variation_idxs, task_idxs = demo_dataset.get_idxs()
+    # print(f'total variation idxs {len(variation_idxs)}, total task ids: {len(task_idxs)}')
+    # sample_mode = 'variation'
+    # sampler = MultiTaskDemoSampler(
+    #     variation_idxs_list=variation_idxs, # 1-1 maps from each variation to idx in dataset e.g. [[0,1], [2,3], [4,5]] belongs to 3 variations but 2 tasks
+    #     task_idxs_list=task_idxs,      # 1-1 maps from each task to all its variations e.g. [[0,1,2,3], [4,5]] collects variations by task
+    #     batch_dim=5, # dimension 'B'
+    #     samples_per_variation=6, # dimension 'N' 
+    #     drop_last=True,
+    #     sample_mode=sample_mode,
+    # )
+    # collate_func = partial(collate_by_id, sample_mode+'_id')
+    # train_loader = DataLoader(
+    #         demo_dataset, 
+    #         batch_sampler=sampler,
+    #         num_workers=5,
+    #         worker_init_fn=lambda w: np.random.seed(np.random.randint(2 ** 29) + w),
+    #         collate_fn=collate_func,  
              
-            )
+    #         )
+    iterable_dataset = PyTorchIterableDemoDataset(
+        batch_dim=2,       # dimension B, depends on sample mode: could either be num of distinct tasks in a batch OR num of variations 
+        samples_per_variation=1, # dimension 'N'  
+        sample_mode='variation', # either sample by task or by variations 
+        demo_dataset=demo_dataset,
+    )
      
         
     

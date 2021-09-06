@@ -139,6 +139,7 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
             one layer to another"""
         priorities = 0
         for qa in self._qattention_agents:
+            #print('\n Updating qa layer: ', qa._layer)
             update_dict = qa.update(step, replay_sample)
             if self._pass_down_context:
                 assert 'prev_layer_encoded_context' in update_dict.keys(), 'Need previous layer to pass down encoded context'
@@ -160,7 +161,7 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
             act_results = qagent.act(step, context_res, observation, deterministic)
             attention_coordinate = act_results.observation_elements['attention_coordinate'].cpu()
             observation_elements['attention_coordinate_layer_%d' % depth] = attention_coordinate[0].numpy()
-            observation_elements['context_embed_layer_%d' % depth] = context_res.context.cpu().numpy()
+            # observation_elements['context_embed_layer_%d' % depth] = context_res.action.cpu().numpy()
 
             translation_idxs, rot_grip_idxs = act_results.action
             translation_results.append(translation_idxs)
@@ -171,9 +172,9 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
             # observation['voxel_grid_depth_%d' % depth] = act_results.extra_replay_elements['voxel_grid_depth_%d' % depth]
             observation['prev_layer_voxel_grid'] = act_results.observation_elements['prev_layer_voxel_grid']
             if self._pass_down_context:
-                context_res.context = act_results.observation_elements['encoded_context']
-                observation_elements['context_embed_layer_%d' % depth] = act_results.observation_elements['encoded_context'].cpu().numpy()
-
+                # context_res.action = act_results.observation_elements['encoded_context']
+                #observation_elements['context_embed_layer_%d' % depth] = act_results.observation_elements['encoded_context'].cpu().numpy()
+                observation['prev_layer_encoded_context']  = act_results.observation_elements['prev_layer_encoded_context'].detach().cpu() 
             
             for n in self._camera_names:
                 px, py = utils.point_to_pixel_index(
