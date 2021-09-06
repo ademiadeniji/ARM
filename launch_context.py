@@ -4,8 +4,6 @@ Note "solvable" tasks with >1 variations:
 - pick_up_cup: 20
 - pick_and_lift: 20 
 - push_button: 18 (push_buttons has 50), this one is super easy 
-- lamp_on: 20
-- lamp_off: 20
 - reach_target: 20 
 NOTE: some local task's variation number might be messed up 
 """
@@ -57,7 +55,23 @@ ACTION_MODE = ActionMode(
         ArmActionMode.ABS_EE_POSE_PLAN_WORLD_FRAME,
         GripperActionMode.OPEN_AMOUNT)
 LOG_CONFIG_KEYS = ['rlbench', 'replay', 'framework', 'contexts', 'dataset']
-
+LATEST_MT = [
+    'pick_up_cup',
+    'phone_on_base',
+    'pick_and_lift',
+    'put_rubbish_in_bin',
+    'reach_target',
+    'stack_wine', 
+    'take_lid_off_saucepan',
+    'take_umbrella_out_of_umbrella_stand',
+    'lamp_on',
+    'lamp_off',
+    'open_door',
+    'press_switch',
+    'push_button',
+    'take_usb_out_of_computer',
+    'close_drawer',
+]
 def make_loader(cfg, mode, dataset):
     variation_idxs, task_idxs = dataset.get_idxs()
     sampler = MultiTaskDemoSampler(
@@ -87,7 +101,6 @@ def run_seed(
     train_demo_dataset,
     val_demo_dataset,
     ) -> None:
-    train_envs = cfg.framework.train_envs
     replay_ratio = None if cfg.framework.replay_ratio == 'None' else cfg.framework.replay_ratio
     replay_split = [1]
     replay_path = join(cfg.replay.path, cfg.tasks_name, cfg.method.name, 'seed%d' % seed)
@@ -144,14 +157,17 @@ def run_seed(
                 print(f"Task id {i}: {one_task}, **created** and filled replay for {len(its_variations)} variations")
                 
 
-        agent = c2farm.launch_utils.create_agent_with_context(cfg, env)
+        if cfg.mt_only:
+            agent = c2farm.launch_utils.create_agent(cfg, env)
+        else:
+            agent = c2farm.launch_utils.create_agent_with_context(cfg, env)
     else:
         raise ValueError('Method %s does not exists.' % cfg.method.name)
 
     wrapped_replays = [PyTorchReplayBuffer(r) for r in replays]
-    # NOTE: stat accumulator still groups by task, not by variation
-    stat_accum = MultiTaskAccumulator(cfg.tasks, eval_video_fps=30) # still using task-based logging, too many variations
- 
+    # NOTE: stat accumulator still using task-based logging, too many variations
+    stat_accum = MultiTaskAccumulator(cfg.tasks, eval_video_fps=30) 
+
     logdir = join(cfg.log_path, 'seed%d' % seed)
     os.makedirs(logdir, exist_ok=False)
     OmegaConf.save( config=cfg, f=join(logdir, 'config.yaml') )
@@ -165,8 +181,9 @@ def run_seed(
             pickle.dump(action_min_max, f)
 
      
-    rollout_generator = RolloutGeneratorWithContext(train_demo_dataset)
- 
+    # if mt_only, generator doesn't sample context
+    rollout_generator = RolloutGeneratorWithContext(train_demo_dataset) 
+
     device_list = [ i for i in range(torch.cuda.device_count()) ]
     assert len(device_list) > 1, 'Must use multiple GPUs'
     env_gpus = None 
@@ -180,15 +197,16 @@ def run_seed(
         agent=agent, 
         train_replay_buffer=replays,
         rollout_generator=rollout_generator,
-        num_train_envs=train_envs,
+        num_train_envs=cfg.framework.train_envs,                
         num_eval_envs=cfg.framework.eval_envs,
         episodes=99999,
         episode_length=cfg.rlbench.episode_length,
         stat_accumulator=stat_accum,
         weightsdir=weightsdir,
-        max_fails=1,
-        device_list=env_gpus
-        ) # ugly hack, leave at least 2 gpus for the agents
+        max_fails=cfg.rlbench.max_fails,
+        device_list=env_gpus,
+        share_buffer_across_tasks=cfg.replay.share_across_tasks,
+        )  
 
     if cfg.framework.wandb_logging:
         run = wandb.init(**cfg.wandb)
@@ -199,22 +217,26 @@ def run_seed(
                 cfg_dict[key+'/'+sub_key] = cfg[key][sub_key]
         run.config.update(cfg_dict)
         run.save()
-
-    logging.info('\n Making dataloaders for context batch training')
-    # ctxt_train_loader = make_loader(cfg.contexts, 'train', train_demo_dataset)
-    # ctxt_val_loader  = make_loader(cfg.contexts,'val', val_demo_dataset)
-    train_demo_dataset = PyTorchIterableDemoDataset(
-        demo_dataset=train_demo_dataset,
-        batch_dim=cfg.contexts.sampler.batch_dim,
-        samples_per_variation=cfg.contexts.sampler.samples_per_variation,
-        sample_mode=cfg.contexts.sampler.sample_mode,
-        )
-    val_demo_dataset = PyTorchIterableDemoDataset(
-        demo_dataset=val_demo_dataset,
-        batch_dim=cfg.contexts.sampler.val_batch_dim,
-        samples_per_variation=cfg.contexts.sampler.val_samples_per_variation,
-        sample_mode=cfg.contexts.sampler.sample_mode,
-        )
+    
+    
+    if not cfg.mt_only:
+        logging.info('\n Making dataloaders for context batch training')
+        # ctxt_train_loader = make_loader(cfg.contexts, 'train', train_demo_dataset)
+        # ctxt_val_loader  = make_loader(cfg.contexts,'val', val_demo_dataset)
+        train_demo_dataset = PyTorchIterableDemoDataset(
+            demo_dataset=train_demo_dataset,
+            batch_dim=cfg.contexts.sampler.batch_dim,
+            samples_per_variation=cfg.contexts.sampler.samples_per_variation,
+            sample_mode=cfg.contexts.sampler.sample_mode,
+            )
+        val_demo_dataset = PyTorchIterableDemoDataset(
+            demo_dataset=val_demo_dataset,
+            batch_dim=cfg.contexts.sampler.val_batch_dim,
+            samples_per_variation=cfg.contexts.sampler.val_samples_per_variation,
+            sample_mode=cfg.contexts.sampler.sample_mode,
+            )
+    else:
+        logging.info('\n Starting no-context TrainRunner')
 
     train_runner = PyTorchTrainContextRunner(
         agent, env_runner,
@@ -236,7 +258,8 @@ def run_seed(
         train_demo_dataset=train_demo_dataset,
         val_demo_dataset=val_demo_dataset,
         wandb_logging=cfg.framework.wandb_logging,
-        context_device=torch.device("cuda:%d" % (cfg.framework.gpu+1))
+        context_device=torch.device("cuda:%d" % (cfg.framework.gpu+1)),
+        no_context=cfg.mt_only,
         )
  
     train_runner.start()
@@ -284,7 +307,7 @@ def main(cfg: DictConfig) -> None:
         #print(name, tsk ,all_variations)
  
         logging.info(f"Task: {name}, using {count} variations")
-    # NOTE(Mandi) need to give a "blank" vanilla env so you don't get error from env_runner.spinup_train_and_eval
+    # NOTE(Mandi) need to give a "blank" vanilla env so you don't get this error from env_runner.spinup_train_and_eval:
     # TypeError: can't pickle _thread.lock objects 
     env = CustomMultiTaskRLBenchEnv(
         task_classes=task_classes, task_names=tasks, observation_config=obs_config,
@@ -310,9 +333,16 @@ def main(cfg: DictConfig) -> None:
     
 
     cwd = os.getcwd()
-    cfg.run_name =  f"Context-step{cfg.dataset.num_steps_per_episode}-freq{cfg.contexts.update_freq}-" + \
-                        f"iter{cfg.contexts.num_update_itrs}-embed{cfg.contexts.agent.embedding_size}-" + \
-                        cfg.run_name
+    cfg.run_name = cfg.run_name + f"Batch{cfg.replay.batch_size}-Demo{cfg.rlbench.demos}-Before{cfg.framework.transitions_before_train}"
+    if cfg.mt_only:
+        logging.info('Use MT-policy, no context embedding, setting EnvRunner visible GPUs to 1')
+        cfg.run_name += 'NoContext' 
+        cfg.framework.env_runner_gpu = 1 
+    else:
+        cfg.run_name +=  f"Context-step{cfg.dataset.num_steps_per_episode}-freq{cfg.contexts.update_freq}-" + \
+                        f"iter{cfg.contexts.num_update_itrs}-embed{cfg.contexts.agent.embedding_size}-" 
+                       
+    
     log_path = join(cwd, tasks_name, cfg.run_name)
     os.makedirs(log_path, exist_ok=True) 
     existing_seeds = len(list(filter(lambda x: 'seed' in x, os.listdir(log_path))))
@@ -320,19 +350,21 @@ def main(cfg: DictConfig) -> None:
     cfg.log_path = log_path 
     # logging.info('\n' + OmegaConf.to_yaml(cfg))
 
-    # make demo dataset and align idxs with task id in the environment 
-    logging.info('Making dataset for context embedding update')
-    train_demo_dataset = RLBenchDemoDataset(obs_config=obs_config, mode='train', **cfg.dataset)
-    val_demo_dataset = RLBenchDemoDataset(obs_config=obs_config, mode='val', **cfg.dataset)
-    
-
-    # some sanity check to make sure task_ids from offline dataset and env are matched
-    for i, (one_task, its_variations) in enumerate(zip(all_tasks, all_variations)):
-        for task_var in its_variations:
-            var = int( task_var.split("_")[-1])
-            data = train_demo_dataset.sample_one_variation(i, var) # this only loads the first episode of each variation 
-            assert one_task in data['name'], f"Task idx {i}. variation {var} \
-                should be {task_var} from environment, but got {data['name']} instead"
+    if cfg.mt_only:
+        train_demo_dataset, val_demo_dataset = None, None 
+    else:
+        # make demo dataset and align idxs with task id in the environment 
+        logging.info('Making dataset for context embedding update')
+        train_demo_dataset = RLBenchDemoDataset(obs_config=obs_config, mode='train', **cfg.dataset)
+        val_demo_dataset = RLBenchDemoDataset(obs_config=obs_config, mode='val', **cfg.dataset)
+        
+        # some sanity check to make sure task_ids from offline dataset and env are matched
+        for i, (one_task, its_variations) in enumerate(zip(all_tasks, all_variations)):
+            for task_var in its_variations:
+                var = int( task_var.split("_")[-1])
+                data = train_demo_dataset.sample_one_variation(i, var) # this only loads the first episode of each variation 
+                assert one_task in data['name'], f"Task idx {i}. variation {var} \
+                    should be {task_var} from environment, but got {data['name']} instead"
 
 
     for seed in range(existing_seeds, existing_seeds + cfg.framework.seeds):

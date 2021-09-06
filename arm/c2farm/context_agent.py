@@ -91,6 +91,9 @@ class ContextAgent(Agent):
         self._prod_of_gaus_factors_over_batch = prod_of_gaus_factors_over_batch
         self._name = NAME 
 
+        self._val_loss = None 
+        self._val_embedding_accuracy = None 
+
     def build(self, training: bool, device: torch.device = None):
         """Train and Test time use the same build() """
         if device is None:
@@ -181,7 +184,7 @@ class ContextAgent(Agent):
         model_inp = rearrange(data, 'b k n ch h w -> (b k) ch n h w').to(self._device)
         return model_inp, b, k 
 
-    def update(self, step, context_batch):
+    def update(self, step, context_batch, val=False):
         # this is kept separate from replay_sample batch, s.t. we can contruct the
         # batch for embedding loss with more freedom 
         model_inp, b, k = self._preprocess_inputs(context_batch)
@@ -191,7 +194,7 @@ class ContextAgent(Agent):
         embeddings = rearrange(embeddings, '(b k) d -> b k d', b=b, k=k)
  
         if self._loss_mode == 'hinge':
-            update_dict = self._compute_hinge_loss(embeddings)
+            update_dict = self._compute_hinge_loss(embeddings, val=val)
         else:
             raise NotImplementedError
 
@@ -260,7 +263,7 @@ class ContextAgent(Agent):
             'emb_loss': self._loss
         }
 
-    def _compute_hinge_loss(self, embeddings): 
+    def _compute_hinge_loss(self, embeddings, val=False): 
         b, k, d = embeddings.shape 
         embeddings_norm = embeddings / embeddings.norm(dim=2, p=2, keepdim=True)
 
@@ -284,27 +287,40 @@ class ContextAgent(Agent):
         negatives = negatives.view(b, b - 1, -1)
 
         loss = torch.max(self._zero, self._margin - positives + negatives)
-        self._loss = loss.mean() * self._emb_lambda
+        if val:
+            self._val_loss = loss.mean() * self._emb_lambda
+        else:
+            self._loss = loss.mean() * self._emb_lambda
 
         # Summaries
         max_of_negs = negatives.max(1)[0]  # (batch, query)
         accuracy = positives[:, 0] > max_of_negs
-        self._embedding_accuracy = accuracy.float().mean()
+        if val:
+            self._val_embedding_accuracy = accuracy.float().mean() 
+        else:
+            self._embedding_accuracy = accuracy.float().mean()
 
         return {
             'context': support_context,
-            'emb_loss': self._loss
+            'emb_loss': loss.mean() * self._emb_lambda,
+            'emd_acc': accuracy.float().mean(), 
         }
 
     def update_train_summaries(self) -> List[Summary]:
-        prefix = 'context'
         summaries = []
         if self._current_context is None:
+            prefix = 'context_train'
             summaries.extend([
                 ScalarSummary('%s/loss' % prefix, self._loss),
                 ScalarSummary('%s/accuracy' % prefix, self._embedding_accuracy),
                 ScalarSummary('%s/mean_embedding' % prefix, self._mean_embedding),
             ])
+            if self._val_embedding_accuracy is not None:
+                prefix = 'context_val'
+                summaries.extend([
+                ScalarSummary('%s/loss' % prefix, self._val_loss),
+                ScalarSummary('%s/accuracy' % prefix, self._val_embedding_accuracy)
+                ])
             # not logging parameters yet 
             # for tag, param in self._embedding_net.named_parameters():
             #     assert not torch.isnan(param.grad.abs() <= 1.0).all()

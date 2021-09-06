@@ -1,5 +1,6 @@
 tasks: ['pick_up_cup']
 run_name: burn 
+mt_only: False # True for no context, MT policy 
 log_path: ??? 
 tasks_name: ???
 rlbench: 
@@ -14,9 +15,10 @@ rlbench:
     cameras: [front]
     camera_resolution: [128, 128]
     scene_bounds: [-0.3, -0.5, 0.6, 0.7, 0.5, 1.6]
+    max_fails: 5
 
 replay:
-    batch_size: 30 # remember to adjust based on using single or task-separate buffers
+    batch_size: 64 # total buff size, no task-aggregate anymore 
     timesteps: 1
     prioritisation: True
     use_disk: False
@@ -26,10 +28,10 @@ replay:
 framework:
     log_freq:  500 # set to bigger to not save so many media files 
     save_freq: 100
-    train_envs: 1
-    eval_envs: 1
+    train_envs: 2
+    eval_envs: 2
     env_runner_gpu: 2
-    replay_ratio: 128
+    replay_ratio: ${replay.batch_size}
     transitions_before_train: 100
     tensorboard_logging: True
     csv_logging: False
@@ -63,7 +65,7 @@ contexts:
     with_action_context: False
     is_train: True
     embedding_size: 32 
-    num_support: 3  #for TecNet
+    num_support: 2  #for TecNet
     num_query:  1
     margin:     1.0
     emb_lambda: 1.0

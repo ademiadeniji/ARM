@@ -28,7 +28,7 @@ done
 
 # pabrtxs1
 DEM=5
-for TASK in lamp_on  reach_target  take_lid_off_saucepan press_switch  stack_wine
+for TASK in lamp_on  stack_wine #reach_target  take_lid_off_saucepan press_switch  
 do
 for BEF in 200 #100 50   
 do
