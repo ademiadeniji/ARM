@@ -26,10 +26,10 @@ replay:
     share_across_tasks: True
 
 framework:
-    log_freq:  500 # set to bigger to not save so many media files 
+    log_freq:  100 # set to bigger to not save so many media files 
     save_freq: 100
     train_envs: 2
-    eval_envs: 2
+    eval_envs: 1
     env_runner_gpu: 2
     replay_ratio: ${replay.batch_size}
     transitions_before_train: 100

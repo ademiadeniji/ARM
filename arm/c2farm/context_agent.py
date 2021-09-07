@@ -192,17 +192,27 @@ class ContextAgent(Agent):
         embeddings = self._embedding_net(model_inp)
         self._mean_embedding = embeddings.mean()
         embeddings = rearrange(embeddings, '(b k) d -> b k d', b=b, k=k)
- 
+        if val:
+            if self._loss_mode == 'hinge':
+                update_dict = self._compute_hinge_loss(embeddings, val=val)
+            else:
+                raise NotImplementedError
+            return update_dict
+
+        self._optimizer.zero_grad()
         if self._loss_mode == 'hinge':
             update_dict = self._compute_hinge_loss(embeddings, val=val)
         else:
             raise NotImplementedError
+        loss = update_dict['emb_loss']
+        loss.backward()
+        self._optimizer.step()
 
         return update_dict
 
     def validate_context(self, step, context_batch):
         with torch.no_grad():
-            val_dict = self.update(step, context_batch)
+            val_dict = self.update(step, context_batch, val=True)
         return val_dict
  
     def train_update(self, step: int, replay_sample: dict) -> dict: 
