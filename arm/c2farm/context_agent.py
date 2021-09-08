@@ -319,17 +319,17 @@ class ContextAgent(Agent):
     def update_train_summaries(self) -> List[Summary]:
         summaries = []
         if self._current_context is None:
-            prefix = 'context_train'
+            prefix = 'context/train'
             summaries.extend([
-                ScalarSummary('%s/loss' % prefix, self._loss),
-                ScalarSummary('%s/accuracy' % prefix, self._embedding_accuracy),
-                ScalarSummary('%s/mean_embedding' % prefix, self._mean_embedding),
+                ScalarSummary('%s_loss' % prefix, self._loss),
+                ScalarSummary('%s_accuracy' % prefix, self._embedding_accuracy),
+                ScalarSummary('%s_mean_embedding' % prefix, self._mean_embedding),
             ])
             if self._val_embedding_accuracy is not None:
-                prefix = 'context_val'
+                prefix = 'context/val'
                 summaries.extend([
-                ScalarSummary('%s/loss' % prefix, self._val_loss),
-                ScalarSummary('%s/accuracy' % prefix, self._val_embedding_accuracy)
+                ScalarSummary('%s_loss' % prefix, self._val_loss),
+                ScalarSummary('%s_accuracy' % prefix, self._val_embedding_accuracy)
                 ])
             # not logging parameters yet 
             # for tag, param in self._embedding_net.named_parameters():

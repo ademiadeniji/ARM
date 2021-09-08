@@ -299,7 +299,7 @@ class RLBenchDemoDataset(Dataset):
                 list(np.random.choice(range(1, aval_steps-1), self._num_steps) ) + \
                 [aval_steps-1]
 
-        for name in [FRONT_RGB_FOLDER, FRONT_DEPTH_FOLDER, FRONT_MASK_FOLDER]:
+        for name in [FRONT_RGB_FOLDER, FRONT_DEPTH_FOLDER]: #, FRONT_MASK_FOLDER]:
             folder = join(path, name) 
             assert aval_steps ==  len(listdir(folder)), \
                 f'Broken dataset assumption on folder {folder}, \
@@ -313,8 +313,8 @@ class RLBenchDemoDataset(Dataset):
                 join(path, FRONT_RGB_FOLDER, si), front_size)   
             obs[i].front_depth = _load_and_maybe_resize(
                 join(path, FRONT_DEPTH_FOLDER, si), front_size) 
-            obs[i].front_mask = _load_and_maybe_resize(
-                join(path, FRONT_MASK_FOLDER, si), front_size)  
+            # obs[i].front_mask = _load_and_maybe_resize(
+            #     join(path, FRONT_MASK_FOLDER, si), front_size)  
 
             # Remove low dim info if necessary
             if not self._obs_config.joint_velocities:

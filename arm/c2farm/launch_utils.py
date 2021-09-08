@@ -191,11 +191,18 @@ def fill_replay(replay: ReplayBuffer,
                 task_id: int = 0,
                 ):
 
-    logging.info('Filling replay with demos...')
+    logging.info(f'Task {task} variation#{variation} Filling replay with {num_demos} demos...')
     for d_idx in range(num_demos):
-        demo = env.env.get_demos(
+        # NOTE(Mandi): changed here to only load fron cameras, to save local dataset size
+        # demo = env.env.get_demos(
+        #     task, 1, variation_number=variation, random_selection=False,
+        #     from_episode_number=d_idx)[0]
+        lookup_cams = []
+        for cam in cameras: # must be in [l, r, oh, wrist, front,]
+            lookup_cams.extend([cam + '_rgb', cam + '_depth'])
+        demo = env.custom_get_demos(
             task, 1, variation_number=variation, random_selection=False,
-            from_episode_number=d_idx)[0]
+            from_episode_number=d_idx, load_cameras=lookup_cams)[0]
         episode_keypoints = demo_loading_utils.keypoint_discovery(demo)
 
         for i in range(len(demo) - 1):
@@ -213,7 +220,7 @@ def fill_replay(replay: ReplayBuffer,
                 replay, obs, demo, env, episode_keypoints, cameras,
                 rlbench_scene_bounds, voxel_sizes, bounds_offset,
                 rotation_resolution, crop_augmentation, task, variation, task_id)
-    logging.info('Replay filled with demos.')
+    #logging.info('Replay filled with demos.')
 
 def create_agent(cfg: DictConfig, env, depth_0bounds=None, cam_resolution=None):
     VOXEL_FEATS = 3

@@ -1,4 +1,4 @@
-tasks: ['pick_up_cup']
+tasks: ['push_buttons']
 run_name: burn 
 mt_only: False # True for no context, MT policy 
 log_path: ??? 
@@ -10,7 +10,7 @@ rlbench:
     id_to_tasks: ??
     variations: -1
     demos: 3
-    demo_path: /home/mandi/all_rlbench_data
+    demo_path: /home/mandi/front_rlbench_data
     episode_length: 10
     cameras: [front]
     camera_resolution: [128, 128]
@@ -83,7 +83,7 @@ contexts:
 
 dataset:
   image_size:                 [128, 128]
-  root_dir:                   '/home/mandi/all_rlbench_data'
+  root_dir:                   ${rlbench.demo_path}
   num_variations_per_task:    ${rlbench.variations} # loads all vars
   num_episodes_per_variation: 20 # up to 20
   num_steps_per_episode:      2 # 1, 2 for now  

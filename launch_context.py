@@ -323,14 +323,15 @@ def main(cfg: DictConfig) -> None:
     cfg.tasks_name = tasks_name
     logging.info(f"Using tasks: {tasks_name} and limit {cfg.rlbench.variations} variations per task")
 
-    # sanity check context dataset sampler
-    if cfg.contexts.sampler.sample_mode == 'variation':
-        assert cfg.contexts.sampler.batch_dim <= sum([len(l) for l in all_variations]) , \
-            f'Cannot construct a batch dim {cfg.contexts.sampler.batch_dim} larger than num. of {sum([len(l) for l in all_variations])} avalible variations'
-    elif cfg.contexts.sampler.sample_mode == 'task':
-        assert cfg.contexts.sampler.batch_dim <= sum([len(l) for l in all_tasks]), \
-            f'Cannot construct a batch dim {cfg.contexts.sampler.batch_dim} larger than num. of {sum([len(l) for l in all_tasks])} avalible tasks'
-    
+    if not cfg.mt_only:
+        # sanity check context dataset sampler
+        if cfg.contexts.sampler.sample_mode == 'variation':
+            assert cfg.contexts.sampler.batch_dim <= sum([len(l) for l in all_variations]) , \
+                f'Cannot construct a batch dim {cfg.contexts.sampler.batch_dim} larger than num. of {sum([len(l) for l in all_variations])} avalible variations'
+        elif cfg.contexts.sampler.sample_mode == 'task':
+            assert cfg.contexts.sampler.batch_dim <= sum([len(l) for l in all_tasks]), \
+                f'Cannot construct a batch dim {cfg.contexts.sampler.batch_dim} larger than num. of {sum([len(l) for l in all_tasks])} avalible tasks'
+        
 
     cwd = os.getcwd()
     cfg.run_name = cfg.run_name + f"Batch{cfg.replay.batch_size}-Demo{cfg.rlbench.demos}-Before{cfg.framework.transitions_before_train}"
