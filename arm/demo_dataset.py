@@ -31,7 +31,7 @@ from rlbench.backend.const import *
 from rlbench.backend.utils import image_to_float_array, rgb_handles_to_mask
 from typing import List
 from PIL import Image
-from natsort import natsorted
+from natsort import natsorted # !!!
 import logging
 from functools import partial 
 SHUFFLE_RNG = 2843014334
@@ -141,10 +141,10 @@ class RLBenchDemoDataset(Dataset):
         self._idx_to_variation = [] 
         self._idx_to_names = []
 
-        for task_id, name in enumerate(self._task_names):
-            variations = sorted( glob( join(root_dir, name, 'variation[0-9]*') ) )
+        for task_id, name in enumerate(self._task_names): 
+            variations = natsorted(glob( join(root_dir, name, 'variation[0-9]*')) ) 
             if self._num_variations > -1:
-                variations = variations[: self._num_variations]
+                variations = variations[: self._num_variations] # NOTE: we can limit variations in dataset BUT not in Env 
              
             all_variation_idxs = []
             listed_var_idxs = [] 
@@ -172,6 +172,7 @@ class RLBenchDemoDataset(Dataset):
             
             self._task_idx_list.append(all_variation_idxs)
             self._task_variation_tree.append(listed_var_idxs)
+            print('dataset got idxs:', self._task_variation_tree)
         
         self.total_count = len(self._all_file_names)
         
@@ -249,9 +250,12 @@ class RLBenchDemoDataset(Dataset):
         return data_list
 
     def sample_one_variation(self, task_id, variation_id):
+        
         variations = self._task_variation_tree[task_id]
+        
         episodes = variations[variation_id]
         eps_idx = np.random.randint(0, len(episodes))
+        # print('sample_one_variation:', task_id, variation_id, self._all_file_names[episodes[eps_idx]])
         data = self.__getitem__( episodes[eps_idx] )
         return data 
 
@@ -266,7 +270,7 @@ class RLBenchDemoDataset(Dataset):
         return self._variation_idx_list, self._task_idx_list
 
     def _load_one_task(self, path):
-        variation_paths = sorted( glob( join(path, 'variation*') ) )
+        variation_paths = natsorted( glob( join(path, 'variation*') ) )
         assert len(variation_paths) >= self._num_variations, f'Got only {len(variation_paths)} saved locally for this task {path}'
         one_task_demos  = []
         for vpath in variation_paths[:self._num_variations]:
@@ -275,7 +279,7 @@ class RLBenchDemoDataset(Dataset):
         return one_task_demos
 
     def _load_one_variation(self, path):
-        episode_paths = sorted( glob( join(path, 'episodes/*') )  )
+        episode_paths = natsorted( glob( join(path, 'episodes/*') )  )
         assert len(episode_paths) >= self._num_episodes, f'Got only {len(episode_paths)} saved locally for this task variation {path}'
         demos = [self._load_one_episode(path) for path in episode_paths[:self._num_episodes]]
         return demos 
@@ -362,9 +366,6 @@ class RLBenchDemoDataset(Dataset):
         
         plt.tight_layout()
         plt.savefig('all_tasks.png')
-
-    def sample_context_batch(self, batch_dim, num_variations, sample_mode='variation'):
-        """ samples b, k, num_steps, 3, 128, 128 """
 
 
 class MultiTaskDemoSampler(Sampler):

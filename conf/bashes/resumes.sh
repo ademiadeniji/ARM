@@ -61,9 +61,9 @@
 # RUN=C2FARM-OneBuffer-Batch63-lr5e4/seed0
 # STEP=19900
 # TASK=stack_wine 
-# for DEMO in 10 1
+# for DEMO in 1 0 10
 # do  
-#  for BEFORE in 200 #100
+#  for BEFORE in 200 100
 # do
 #     # python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-7Task-Batch64-lr1e4-${DEMO}Demo-${BEFORE}before \
 #     # framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
@@ -94,7 +94,7 @@ STEP=49900
 TASK=pick_up_cup 
 for DEMO in 10 1 0
 do  
- for BEFORE in 200 #100
+ for BEFORE in 200 100
 do
     # python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-7Task-Batch64-lr1e4-${DEMO}Demo-${BEFORE}before \
     # framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
@@ -118,3 +118,20 @@ do
 
     done
 done
+
+
+TASK=take_lid_off_saucepan
+for DEMO in 0 1  
+do  
+ for BEFORE in 200 100
+do
+    python launch_multitask.py tasks=[$TASK]  resume=True run_name=Resume-14Task-Batch64-lr5e4-${DEMO}Demo-${BEFORE}before \
+    framework.wandb_logging=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE} \
+    framework.log_freq=50 \
+    resume_run=${RUN} resume_step=${STEP} rlbench.demo_path=/shared/mandi/all_rlbench_data \
+    rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=5e-4 
+
+    done
+done
+
+for TASK in take_lid_off_saucepan reach_target press_switch; do for DEMO in 0 1; do    for BEFORE in 50 100 200; do     python launch_context.py tasks=[$TASK]  run_name=Baseline-NoContext-lr5e4 mt_only=True framework.training_iterations=5000 framework.transitions_before_train=${BEFORE}     rlbench.demo_path=/home/mandi/front_rlbench_data   rlbench.demos=${DEMO} replay.batch_size=64 framework.replay_ratio=64 method.lr=5e-4 framework.log_freq=50  ;      done; done; done

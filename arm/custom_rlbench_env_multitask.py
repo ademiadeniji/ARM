@@ -152,9 +152,10 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
             self._append_final_frame(success)
             vid = np.array(self._recorded_images).transpose((0, 3, 1, 2))
             vid_name = f'{self._active_task_id}_var{self._active_variation_id}_rollout_rew{int(reward)}'
+            # print('trying to save vid:', vid_name,  len(self._logged_videos[vid_name]))
             if len(self._logged_videos[vid_name]) < self._num_video_limit:
-                summaries.append(VideoSummary(
-                    vid_name, vid, fps=30))
+                summaries.append(
+                    VideoSummary(vid_name, vid, fps=30))
                 self._logged_videos[vid_name].append(vid)
         return Transition(obs, reward, terminal, summaries=summaries) 
 

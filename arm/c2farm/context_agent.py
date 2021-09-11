@@ -157,8 +157,7 @@ class ContextAgent(Agent):
     def load_weights(self, savedir: str):
         device = self._device
         self._embedding_net.load_state_dict(
-            torch.load(os.path.join(savedir, 'embedding_net.pt'),
-                       map_location=device))
+            torch.load(os.path.join(savedir, 'embedding_net.pt'), map_location=device))
 
     def save_weights(self, savedir: str):
         torch.save(
@@ -178,8 +177,12 @@ class ContextAgent(Agent):
             return self.update_test_summaries()
     
     def _preprocess_inputs(self, batch):
+        #for collate_id, d in batch.items():
+            #print('context agent update:', collate_id, d.get('front_rgb').shape)
+
         data = torch.stack([ d.get('front_rgb') for collate_id, d in batch.items()] ) 
-        assert len(data.shape) == 6, 'Must be shape (b, n, num_frames, channels, img_h, img_w) '
+        #print('context agent update:', data.shape)
+        assert len(data.shape) == 6, 'Must be shape (b, num_episodes, num_frames, channels, img_h, img_w)'
         b, k, n, ch, img_h, img_w = data.shape 
         model_inp = rearrange(data, 'b k n ch h w -> (b k) ch n h w').to(self._device)
         return model_inp, b, k 

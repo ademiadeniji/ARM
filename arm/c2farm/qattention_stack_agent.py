@@ -137,6 +137,9 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
     def update(self, step: int, replay_sample: dict) -> dict:
         """NOTE(mandi): we may need to 'pass down' the encoded context embedding from 
             one layer to another"""
+        # utils.visualize_batch(replay_sample, filename='/home/mandi/ARM/debug/one_batch', img_size=128)
+        # raise ValueError
+
         priorities = 0
         for qa in self._qattention_agents:
             #print('\n Updating qa layer: ', qa._layer)

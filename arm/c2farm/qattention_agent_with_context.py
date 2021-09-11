@@ -520,7 +520,7 @@ class QAttentionContextAgent(Agent):
     def act_summaries(self) -> List[Summary]:
         return [
             ImageSummary(
-                f'task{self._task_id}_var{self._variation_id}_{self._name}/act_Qattention',
+                f'{self._name}/act_Qattention/task{self._task_id}/var{self._variation_id}',
                 transforms.ToTensor()(visualise_voxel(
                     self._act_voxel_grid.cpu().numpy(),
                     self._act_qvalues.cpu().numpy(),

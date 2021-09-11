@@ -1,4 +1,4 @@
-tasks: ['push_buttons']
+tasks: ['pick_up_cup']
 run_name: burn 
 mt_only: False # True for no context, MT policy 
 log_path: ??? 
@@ -7,10 +7,10 @@ rlbench:
     tasks: ${tasks}
     all_tasks: ???      # [task_A, task_B,...]
     all_variations: ??? # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
-    id_to_tasks: ??
-    variations: -1
+    id_to_tasks: ???
+    # variations: -1         # Actually it's useless to limit this, 
     demos: 3
-    demo_path: /home/mandi/front_rlbench_data
+    demo_path: /home/mandi/all_rlbench_data
     episode_length: 10
     cameras: [front]
     camera_resolution: [128, 128]
@@ -58,7 +58,7 @@ dev:
 
 contexts:
   num_update_itrs: 5
-  val_freq:   1000
+  val_freq:   100
   update_freq: 2  # as compared to agent update
   pass_down_context: True 
   agent:
@@ -67,7 +67,7 @@ contexts:
     embedding_size: 32 
     num_support: 2  #for TecNet
     num_query:  1
-    margin:     1.0
+    margin:     2.0
     emb_lambda: 1.0
     save_context: False 
     loss_mode:  'hinge' 
@@ -78,13 +78,13 @@ contexts:
     samples_per_variation: 3      # dimension 'N' 
     drop_last:             True 
     sample_mode:           'variation' # or 'variation'
-    val_batch_dim:             5      # actually let's fix this for all sweeping runs to get a fair comparision 
+    val_batch_dim:             20      # actually let's fix this for all sweeping runs to get a fair comparision 
     val_samples_per_variation: 2      # dimension 'N', has to limit to 2 due to datasplit
 
 dataset:
   image_size:                 [128, 128]
   root_dir:                   ${rlbench.demo_path}
-  num_variations_per_task:    ${rlbench.variations} # loads all vars
+  num_variations_per_task:    -1 # just loads all vars, no way to constraint envrunner anyway
   num_episodes_per_variation: 20 # up to 20
   num_steps_per_episode:      2 # 1, 2 for now  
   exclude_tasks:              []

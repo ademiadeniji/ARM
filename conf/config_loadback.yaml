@@ -1,0 +1,24 @@
+gen_video: False
+gen_tsne:  False 
+evaluate:  False 
+
+
+num_episodes: 10
+num_variations: -1 # if -1, evaluate all of them
+eval_tasks: ['pickup_cup']
+
+logdir:   '/home/mandi/ARM/log/'
+load_path: ???
+load_step: -1
+
+# for video 
+q_thres: 0.75 
+
+# for tsne
+
+
+upload_wandb: False
+wandb:
+  job_type: ???
+  group: ???
+  project: 'ContextARM'

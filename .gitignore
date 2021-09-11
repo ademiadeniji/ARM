@@ -15,6 +15,7 @@ log/
 cxt_log/
 nohup.out
 wandb/
+debug/*
 *.mp4
 *.html
 outputs/

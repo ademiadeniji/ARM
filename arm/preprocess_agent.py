@@ -29,6 +29,8 @@ class PreprocessAgent(Agent):
 
     def update(self, step: int, replay_sample: dict) -> dict:
         # Samples are (B, N, ...) where N is number of buffers/tasks. This is a single task setup, so 0 index.
+        #for k, v in replay_sample.items():
+            #print('preprocess agent update:', k, v.shape, v[:,0].shape )
         replay_sample = {k: v[:, 0] for k, v in replay_sample.items()}
         for k, v in replay_sample.items():
             if 'rgb' in k:

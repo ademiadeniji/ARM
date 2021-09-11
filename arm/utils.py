@@ -8,7 +8,9 @@ from scipy.spatial.transform import Rotation
 
 SCALE_FACTOR = DEPTH_SCALE
 DEFAULT_SCENE_SCALE = 2.0
-
+import matplotlib.pyplot as plt
+MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape((3,1,1))
+STD = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape((3,1,1))
 
 def loss_weights(replay_sample, beta=1.0):
     loss_weights = 1.0
@@ -200,3 +202,44 @@ def visualise_voxel(voxel_grid: np.ndarray,
         s.add(cam, pose=t.pose)
         color, depth = r.render(s)
         return color.copy()
+
+def visualize_batch(replay_sample, filename='one_batch', img_size=128):
+    for key, v in replay_sample.items():
+        if 'rgb' in key:
+            print('Generating image for:', key, v.shape)
+            b, k, ch, img_h, img_w = v.shape # k should be 1
+            nrows = b
+            ncols = k 
+            fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(ncols*4, nrows*4))
+            for i in range(b):
+                for j in range(k):
+                    img = v[i,j].cpu().numpy()
+                    #img = img.cpu().numpy() * STD + MEAN
+                    img = (img + 1.0) / 2.0  # diff normalization scheme rip
+                    assert len(img.shape) == 3, f'Got image shape: {img.shape}'
+                    row, col = i, j 
+                    ax = axs[row, col] if ncols > 1 else axs[row]
+                    ax.imshow(img.transpose(1,2,0))
+                    ax.axis('off')
+            plt.tight_layout()
+            plt.savefig(f'{filename}_{key}.png')
+
+        if 'demo_sample' in key:
+            print('Generating image for:', key, v.shape)
+            b, n, ch, img_h, img_w = v.shape # k should be 1
+            nrows = b
+            ncols = n 
+            fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(ncols*4, nrows*4))
+            for i in range(b):
+                for j in range(n):
+                    img = v[i,j]#.cpu().numpy()
+                    img = img.cpu().numpy() * STD + MEAN
+                    #img = (img + 1.0) / 2.0  # diff normalization scheme rip
+                    assert len(img.shape) == 3, f'Got image shape: {img.shape}'
+                    row, col = i, j 
+                    ax = axs[row, col] if ncols > 1 else axs[row]
+                    ax.imshow(img.transpose(1,2,0))
+                    ax.axis('off')
+            plt.tight_layout()
+            plt.savefig(f'{filename}_{key}.png')
+    return 

@@ -27,7 +27,7 @@ from yarr.replay_buffer.wrappers.pytorch_replay_buffer import \
 from yarr.runners.env_runner import EnvRunner
 from yarr.runners.pytorch_train_context_runner import PyTorchTrainContextRunner
 from yarr.runners.pytorch_train_runner import PyTorchTrainRunner
-from yarr.utils.stat_accumulator import SimpleAccumulator, MultiTaskAccumulator
+from yarr.utils.stat_accumulator import SimpleAccumulator, MultiTaskAccumulator, MultiTaskAccumulatorV2
 
 from arm import arm
 from arm import c2farm
@@ -148,8 +148,10 @@ def run_seed(
                         r, one_task, env, cfg.rlbench.demos,
                         cfg.method.demo_augmentation, cfg.method.demo_augmentation_every_n,
                         cams, cfg.rlbench.scene_bounds,
-                        cfg.method.voxel_sizes, cfg.method.bounds_offset,
-                        cfg.method.rotation_resolution, cfg.method.crop_augmentation,
+                        cfg.method.voxel_sizes, 
+                        cfg.method.bounds_offset,
+                        cfg.method.rotation_resolution, 
+                        cfg.method.crop_augmentation,
                         variation=var,
                         task_id=i,
                         )
@@ -166,7 +168,15 @@ def run_seed(
 
     wrapped_replays = [PyTorchReplayBuffer(r) for r in replays]
     # NOTE: stat accumulator still using task-based logging, too many variations
-    stat_accum = MultiTaskAccumulator(cfg.tasks, eval_video_fps=30) 
+    # stat_accum = MultiTaskAccumulator(cfg.tasks, eval_video_fps=30) 
+    logging.info('Creating Stat Accumulator: ')
+    stat_accum = MultiTaskAccumulatorV2(
+        task_names=cfg.tasks, 
+        tasks_vars=cfg.rlbench.all_variations,
+        eval_video_fps=30,
+        mean_only=True,
+        max_len=5,
+        ) 
 
     logdir = join(cfg.log_path, 'seed%d' % seed)
     os.makedirs(logdir, exist_ok=False)
@@ -297,10 +307,7 @@ def main(cfg: DictConfig) -> None:
     all_variations = [] 
     for name, tsk in zip(tasks, task_classes):
         task = env.get_task(tsk)
-        if cfg.rlbench.variations == -1:
-            count = task.variation_count()
-        else:
-            count = min(task.variation_count(), cfg.rlbench.variations)
+        count = task.variation_count() 
         all_tasks.append(name)
         var_count += count
         all_variations.append([ f"{name}_{c}" for c in range(count) ])
@@ -321,7 +328,7 @@ def main(cfg: DictConfig) -> None:
 
     tasks_name = "-".join(cfg.tasks) + f"-{var_count}var"
     cfg.tasks_name = tasks_name
-    logging.info(f"Using tasks: {tasks_name} and limit {cfg.rlbench.variations} variations per task")
+    logging.info(f"Using tasks: {tasks_name} and _all_ of their variations")
 
     if not cfg.mt_only:
         # sanity check context dataset sampler
@@ -341,7 +348,7 @@ def main(cfg: DictConfig) -> None:
         cfg.framework.env_runner_gpu = 1 
     else:
         cfg.run_name +=  f"Context-step{cfg.dataset.num_steps_per_episode}-freq{cfg.contexts.update_freq}-" + \
-                        f"iter{cfg.contexts.num_update_itrs}-embed{cfg.contexts.agent.embedding_size}-" 
+                        f"iter{cfg.contexts.num_update_itrs}-embed{cfg.contexts.agent.embedding_size}" 
                        
     
     log_path = join(cwd, tasks_name, cfg.run_name)
