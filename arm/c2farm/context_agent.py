@@ -9,6 +9,7 @@ import numpy as np
 import math
 from abc import ABC, abstractmethod
 from arm.models.utils import make_optimizer # tie the optimizer definition closely with embedding nets 
+from arm import utils
 from omegaconf import DictConfig
 from einops import rearrange, reduce, repeat, parse_shape
 
@@ -190,6 +191,14 @@ class ContextAgent(Agent):
     def update(self, step, context_batch, val=False):
         # this is kept separate from replay_sample batch, s.t. we can contruct the
         # batch for embedding loss with more freedom 
+        # data = torch.stack([ d.get('front_rgb') for collate_id, d in context_batch.items()] ) 
+        # data = rearrange(data, 'b k n ch h w -> (b k) n ch h w')
+        # temp_batch = {
+        #    'demo_sample' : data
+        # }
+        # utils.visualize_batch(temp_batch, filename='/home/mandi/ARM/debug/ctxt_batch', img_size=128)
+        # raise ValueError
+
         model_inp, b, k = self._preprocess_inputs(context_batch)
          
         embeddings = self._embedding_net(model_inp)

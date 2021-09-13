@@ -349,7 +349,6 @@ def main(cfg: DictConfig) -> None:
     else:
         cfg.run_name +=  f"Context-step{cfg.dataset.num_steps_per_episode}-freq{cfg.contexts.update_freq}-" + \
                         f"iter{cfg.contexts.num_update_itrs}-embed{cfg.contexts.agent.embedding_size}" 
-                       
     
     log_path = join(cwd, tasks_name, cfg.run_name)
     os.makedirs(log_path, exist_ok=True) 

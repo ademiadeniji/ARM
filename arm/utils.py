@@ -203,8 +203,11 @@ def visualise_voxel(voxel_grid: np.ndarray,
         color, depth = r.render(s)
         return color.copy()
 
+
 def visualize_batch(replay_sample, filename='one_batch', img_size=128):
     for key, v in replay_sample.items():
+        if not isinstance(key, str):
+            continue 
         if 'rgb' in key:
             print('Generating image for:', key, v.shape)
             b, k, ch, img_h, img_w = v.shape # k should be 1

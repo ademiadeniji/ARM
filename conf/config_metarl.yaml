@@ -61,6 +61,7 @@ contexts:
   val_freq:   100
   update_freq: 2  # as compared to agent update
   pass_down_context: True 
+  pretrain_context_steps: 0 
   agent:
     with_action_context: False
     is_train: True
