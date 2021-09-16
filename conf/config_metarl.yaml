@@ -55,6 +55,10 @@ resume_step: 24300
 dev:
     q_thres: 0.75  
     qagent_update_context: True
+    one_hot: False
+    one_hot_size: 20   
+    encode_context: False  # if one-hot, prolly ok not to encode
+    qnet_context_latent_size: 16
 
 contexts:
   num_update_itrs: 5

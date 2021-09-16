@@ -22,8 +22,8 @@ class PreprocessAgent(Agent):
         
         self._pose_agent.build(training, device)
         self._device = device 
+        self._replay_sample = None 
         
-
     def _norm_rgb_(self, x):
         return (x.float() / 255.0) * 2.0 - 1.0
 
@@ -49,7 +49,7 @@ class PreprocessAgent(Agent):
 
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:
-        # print('preprocess agent input:', observation.keys())
+        
         observation = {
             k: v.clone().detach().to(self._device) if isinstance(v, torch.Tensor) else \
             torch.tensor(v).to(self._device)  for k, v in observation.items()}

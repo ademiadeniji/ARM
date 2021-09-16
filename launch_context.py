@@ -190,9 +190,10 @@ def run_seed(
         with open(os.path.join(logdir, 'action_min_max.pkl'), 'wb') as f:
             pickle.dump(action_min_max, f)
 
-     
+    num_all_vars = sum([len(variations) for variations in cfg.rlbench.all_variations]) 
     # if mt_only, generator doesn't sample context
-    rollout_generator = RolloutGeneratorWithContext(train_demo_dataset) 
+    rollout_generator = RolloutGeneratorWithContext(
+        train_demo_dataset, one_hot=cfg.dev.one_hot, num_vars=num_all_vars)
 
     device_list = [ i for i in range(torch.cuda.device_count()) ]
     assert len(device_list) > 1, 'Must use multiple GPUs'
@@ -229,7 +230,7 @@ def run_seed(
         run.save()
     
     
-    if not cfg.mt_only:
+    if not (cfg.mt_only or cfg.dev.one_hot):
         logging.info('\n Making dataloaders for context batch training')
         # ctxt_train_loader = make_loader(cfg.contexts, 'train', train_demo_dataset)
         # ctxt_val_loader  = make_loader(cfg.contexts,'val', val_demo_dataset)
@@ -270,6 +271,8 @@ def run_seed(
         wandb_logging=cfg.framework.wandb_logging,
         context_device=torch.device("cuda:%d" % (cfg.framework.gpu+1)),
         no_context=cfg.mt_only,
+        one_hot=cfg.dev.one_hot,
+        num_vars=num_all_vars,
         )
  
     train_runner.start()
@@ -342,8 +345,8 @@ def main(cfg: DictConfig) -> None:
 
     cwd = os.getcwd()
     cfg.run_name = cfg.run_name + f"Batch{cfg.replay.batch_size}-Demo{cfg.rlbench.demos}-Before{cfg.framework.transitions_before_train}"
-    if cfg.mt_only:
-        logging.info('Use MT-policy, no context embedding, setting EnvRunner visible GPUs to 1')
+    if cfg.mt_only or cfg.dev.one_hot :
+        logging.info('Use MT-policy or One-hot context, no context embedding, setting EnvRunner visible GPUs to 1')
         cfg.run_name += 'NoContext' 
         cfg.framework.env_runner_gpu = 1 
     else:
@@ -357,7 +360,7 @@ def main(cfg: DictConfig) -> None:
     cfg.log_path = log_path 
     # logging.info('\n' + OmegaConf.to_yaml(cfg))
 
-    if cfg.mt_only:
+    if cfg.mt_only or cfg.dev.one_hot :
         train_demo_dataset, val_demo_dataset = None, None 
     else:
         # make demo dataset and align idxs with task id in the environment 

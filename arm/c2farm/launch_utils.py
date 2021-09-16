@@ -328,11 +328,13 @@ def create_agent_with_context(cfg: DictConfig, env,
     context_agent = ContextAgent(
         embedding_net=embedding_net, 
         camera_names=cfg.rlbench.cameras,
+        one_hot=cfg.dev.one_hot,
         **cfg.contexts.agent
         )
 
     num_rotation_classes = int(360. // cfg.method.rotation_resolution)
     qattention_agents = []
+    ctxt_size = cfg.dev.one_hot_size if cfg.dev.one_hot else CONTEXT_SIZE
     for depth, vox_size in enumerate(cfg.method.voxel_sizes):
         if depth == 0:
             unet3d = Qattention3DNetWithContext(
@@ -345,7 +347,9 @@ def create_agent_with_context(cfg: DictConfig, env,
                 dense_feats=128,
                 activation=cfg.method.activation,
                 low_dim_size=env.low_dim_state_len,
-                context_size=CONTEXT_SIZE,
+                inp_context_size=ctxt_size,
+                encode_context=cfg.dev.encode_context,
+                encode_context_size=cfg.dev.qnet_context_latent_size,
                 )
         else:
             last = depth == len(cfg.method.voxel_sizes) - 1
@@ -360,7 +364,9 @@ def create_agent_with_context(cfg: DictConfig, env,
                 activation=cfg.method.activation,
                 low_dim_size=env.low_dim_state_len,
                 include_prev_layer=include_prev_layer,
-                context_size=LATENT_SIZE if cfg.contexts.pass_down_context else CONTEXT_SIZE #cfg.contexts.agent.embedding_size,
+                encode_context=cfg.dev.encode_context,
+                inp_context_size=cfg.dev.qnet_context_latent_size if (cfg.contexts.pass_down_context and cfg.dev.encode_context) else ctxt_size, #cfg.contexts.agent.embedding_size,
+                encode_context_size=cfg.dev.qnet_context_latent_size,
                 )
 
         qattention_agent = QAttentionContextAgent(

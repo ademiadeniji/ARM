@@ -16,6 +16,22 @@ FREQ=50000
 ITR=1 
 python launch_context.py tasks=['pick_up_cup'] run_name=NoHinge \
 contexts.update_freq=${FREQ} contexts.num_update_itrs=${ITR} framework.training_iterations=50000
+# small emb
+FREQ=100
+ITR=1 
+python launch_context.py tasks=['pick_up_cup'] run_name=SmallHinge-lr3e-4-batch20x3 \
+encoder.MODEL.OUT_DIM=16 contexts.agent.embedding_size=64 \
+contexts.sampler.batch_dim=20 contexts.sampler.samples_per_variation=3 encoder.OPTIM.BASE_LR=3e-4 \
+contexts.update_freq=${FREQ} contexts.num_update_itrs=${ITR} framework.training_iterations=50000
+
+FREQ=100
+ITR=1 
+python launch_context.py tasks=['pick_up_cup'] run_name=SmallHinge-lr3e-4-batch20x3 \
+encoder.MODEL.OUT_DIM=8 contexts.agent.embedding_size=32 \
+contexts.sampler.batch_dim=20 contexts.sampler.samples_per_variation=3 encoder.OPTIM.BASE_LR=3e-4 \
+contexts.update_freq=${FREQ} contexts.num_update_itrs=${ITR} framework.training_iterations=50000
+
+
 
 
 for FREQ in 100  

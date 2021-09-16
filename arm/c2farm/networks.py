@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+import logging
 from arm.network_utils import Conv3DInceptionBlock, DenseBlock, SpatialSoftmax3D, \
     Conv3DInceptionBlockUpsampleBlock, Conv3DBlock
 
@@ -207,11 +207,14 @@ class Qattention3DNetWithContext(Qattention3DNet):
                  voxel_size: int,
                  low_dim_size: int,
                  kernels: int,
-                 context_size: int,
+                 inp_context_size: int,
+                 encode_context: bool = True,
+                 encode_context_size: int = 16, 
                  norm: str = None,
                  activation: str = 'relu',
                  dense_feats: int = 32,
                  include_prev_layer = False, 
+
                  ):
         super(Qattention3DNet, self).__init__()
         self._in_channels = in_channels
@@ -227,8 +230,10 @@ class Qattention3DNetWithContext(Qattention3DNet):
         self._include_prev_layer = include_prev_layer
         # context related
         # self._use_prev_context = use_prev_context 
-        self._context_size = context_size 
-        print('Input context embedding size for Qattention3DNet: ', context_size)
+        self._inp_context_size = inp_context_size
+        self._encode_context_size = encode_context_size 
+        self._encode_context = encode_context 
+        print(f'Qattention3DNet: Input context embedding size: {inp_context_size}, output size {encode_context_size if encode_context else inp_context_size}')
 
     
     def build(self):
@@ -256,11 +261,14 @@ class Qattention3DNetWithContext(Qattention3DNet):
             d0_ins += self._kernels
 
         # Note context size can also equal _kernels if this is intermediate net and use_prev_context is True 
-        self._context_preprocess = DenseBlock(
-                self._context_size, self._kernels, None, self._activation
-            )
-        d0_ins += self._kernels # exactly the same as how low_dim_size is added
-
+        if self._encode_context:
+            self._context_preprocess = DenseBlock(
+                    self._inp_context_size, self._encode_context_size, None, self._activation
+                )
+            d0_ins += self._encode_context_size # exactly the same as how low_dim_size is added
+        else:
+            logging.info('Warning - Not encoding context in Qattention3DNetWithContext')
+            d0_ins += self._inp_context_size 
         self._down0 = Conv3DInceptionBlock(
             d0_ins, self._kernels, norm=self._norm,
             activation=self._activation, residual=use_residual)
@@ -347,7 +355,10 @@ class Qattention3DNetWithContext(Qattention3DNet):
                 1, 1, d, h, w)
             x = torch.cat([x, p], dim=1)
         
-        ctxt = self._context_preprocess(context) # b, 64
+        if self._encode_context:
+            ctxt = self._context_preprocess(context) # b, 64 
+        else:
+            ctxt = context 
         # print('networks Qnet forward: ctxt shape', ctxt.shape)
         repeated = ctxt.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(
                 1, 1, d, h, w)
