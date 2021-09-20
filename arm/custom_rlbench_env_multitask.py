@@ -152,6 +152,7 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
             self._append_final_frame(success)
             vid = np.array(self._recorded_images).transpose((0, 3, 1, 2))
             vid_name = f'task{self._active_task_id}_rollout/var{self._active_variation_id}_rew{int(reward)}'
+            
             summaries.append( VideoSummary(vid_name, vid, fps=30) ) 
         return Transition(obs, reward, terminal, summaries=summaries) 
 
