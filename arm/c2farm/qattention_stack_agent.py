@@ -211,11 +211,20 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
         return summaries
 
     def act_summaries(self) -> List[Summary]:
+        # s = []
+        # for qa in self._qattention_agents:
+        #     s.extend(qa.act_summaries())
+        # s.extend(self._context_agent.act_summaries())
+        # return s
+        # Note(Mandi): try concat multiple images into one img summary 
         s = []
         for qa in self._qattention_agents:
-            s.extend(qa.act_summaries())
-        s.extend(self._context_agent.act_summaries())
-        return s
+            for summary in qa.act_summaries():
+                print(summary.name, summary.value.shape)
+                s.append(summary.value)
+            #s.extend([sumry.value for sumry in qa.act_summaries() if 'act_Qattention' in sumry.name ] )
+        # raise ValueError
+        return [ImageSummary( 'act_Qattention', torch.stack(s, dim=1) ] 
 
     def load_weights(self, savedir: str):
         for qa in self._qattention_agents:

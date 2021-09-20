@@ -46,8 +46,7 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
                  headless=True,
                  swap_task_every: int = 1,
                  reward_scale: int = 100,
-                 num_video_limit: int = 3, # don't log too many videos of the same reward
-                 
+                 num_video_limit: int = 3, # don't log too many videos of the same reward 
                  ):
         super(CustomMultiTaskRLBenchEnv, self).__init__(
             task_classes, task_names, 
@@ -55,14 +54,14 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
             dataset_root, channels_last, headless, swap_task_every)
         self._reward_scale = reward_scale
         self._episode_index = 0
-        self._record_current_episode = False
+        self._record_current_episode = False  
         self._record_cam = None
         self._previous_obs, self._previous_obs_dict = None, None
         self._recorded_images = []
         self._episode_length = episode_length
         self._i = 0
-        self._num_video_limit = num_video_limit
-        self._logged_videos = defaultdict(list)
+        # self._num_video_limit = num_video_limit
+        # self._logged_videos = defaultdict(int)
 
     @property
     def observation_elements(self) -> List[ObservationElement]:
@@ -93,6 +92,7 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
         super(CustomMultiTaskRLBenchEnv, self).launch()
         self._task._scene.register_step_callback(self._my_callback)
         if self.eval:
+            self._record_current_episode = True 
             cam_placeholder = Dummy('cam_cinematic_placeholder')
             cam_base = Dummy('cam_cinematic_base')
             cam_base.rotate([0, 0, np.pi * 0.75])
@@ -103,8 +103,9 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
 
     def reset(self) -> dict:
         self._previous_obs_dict = super(CustomMultiTaskRLBenchEnv, self).reset()
-        self._record_current_episode = (
-                self.eval and self._episode_index % RECORD_EVERY == 0)
+        self._record_current_episode = self.eval
+        # self._record_current_episode = (
+        #         self.eval and self._episode_index % RECORD_EVERY == 0)
         self._episode_index += 1
         self._recorded_images.clear()
         self._i = 0 
@@ -146,17 +147,12 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
             reward = -1.0
 
         summaries = []
-        self._i += 1
-        if ((terminal or self._i == self._episode_length) and
-                self._record_current_episode):
+        self._i += 1 
+        if ((terminal or self._i == self._episode_length) and self._record_current_episode):
             self._append_final_frame(success)
             vid = np.array(self._recorded_images).transpose((0, 3, 1, 2))
-            vid_name = f'{self._active_task_id}_var{self._active_variation_id}_rollout_rew{int(reward)}'
-            # print('trying to save vid:', vid_name,  len(self._logged_videos[vid_name]))
-            if len(self._logged_videos[vid_name]) < self._num_video_limit:
-                summaries.append(
-                    VideoSummary(vid_name, vid, fps=30))
-                self._logged_videos[vid_name].append(vid)
+            vid_name = f'task{self._active_task_id}_rollout/var{self._active_variation_id}_rew{int(reward)}'
+            summaries.append( VideoSummary(vid_name, vid, fps=30) ) 
         return Transition(obs, reward, terminal, summaries=summaries) 
 
     def reset_to_demo(self, i):
