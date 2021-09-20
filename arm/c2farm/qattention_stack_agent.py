@@ -13,6 +13,9 @@ from arm import utils
 from arm.c2farm.qattention_agent import QAttentionAgent
 from arm.c2farm.qattention_agent_with_context import QAttentionContextAgent
 
+from yarr.agents.agent import Agent, ActResult, ScalarSummary, \
+    HistogramSummary, ImageSummary, Summary
+
 NAME = 'QAttentionStackAgent'
 GAMMA = 0.99
 NSTEP = 1
@@ -205,10 +208,38 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
 
     def update_summaries(self) -> List[Summary]:
         summaries = []
+        # for qa in self._qattention_agents:
+        #     summaries.extend(qa.update_summaries())
+        # summaries.extend(self._context_agent.update_summaries())
+        
+        update_img, input_img = [], []
         for qa in self._qattention_agents:
-            summaries.extend(qa.update_summaries())
-        summaries.extend(self._context_agent.update_summaries())
+            one_layer, inputs = [], []
+            for summary in qa.update_summaries(): 
+                
+                if isinstance(summary, ImageSummary):
+                    v = (summary.value if summary.value.ndim == 3 else
+                             summary.value[0])
+                    if 'update_qatten' in summary.name:
+                        one_layer.append(v.cpu())
+                    # elif 'input' in summary.name:
+                    #     inputs.append(v.cpu())
+                    else:
+                        summaries.append(summary)
+                else:
+                    summaries.append(summary)
+            update_img.append(torch.cat(one_layer, dim=2))
+            # input_img.append(np.concatenate(inputs, axis=2))
+        summaries.extend([
+            ImageSummary('update_qattention', torch.cat(update_img, dim=1)),
+            #ImageSummary('inputs_qattention', np.concatenate(input_img, axis=1))
+            ]
+            )
+
         return summaries
+                
+
+
 
     def act_summaries(self) -> List[Summary]:
         # s = []
@@ -220,11 +251,11 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
         s = []
         for qa in self._qattention_agents:
             for summary in qa.act_summaries():
-                print(summary.name, summary.value.shape)
+                # print(summary.name, summary.value.shape) # [3,480,640] for single img
                 s.append(summary.value)
             #s.extend([sumry.value for sumry in qa.act_summaries() if 'act_Qattention' in sumry.name ] )
         # raise ValueError
-        return [ImageSummary( 'act_Qattention', torch.stack(s, dim=1) ] 
+        return [ImageSummary( 'act_Qattention', torch.cat(s, dim=1)) ] 
 
     def load_weights(self, savedir: str):
         for qa in self._qattention_agents:
