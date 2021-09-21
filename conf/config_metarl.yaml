@@ -59,6 +59,12 @@ dev:
     one_hot_size: 20   
     encode_context: False  # if one-hot, prolly ok not to encode
     qnet_context_latent_size: 16
+    
+    cat_down1: 1
+    cat_down2: 1
+    cat_up1: 1
+    cat_up2: 1
+    cat_f1: 1
 
 contexts:
   num_update_itrs: 5

@@ -96,7 +96,7 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
             cam_placeholder = Dummy('cam_cinematic_placeholder')
             cam_base = Dummy('cam_cinematic_base')
             cam_base.rotate([0, 0, np.pi * 0.75])
-            self._record_cam = VisionSensor.create([320, 180])
+            self._record_cam = VisionSensor.create([120, 90])
             self._record_cam.set_explicit_handling(True)
             self._record_cam.set_pose(cam_placeholder.get_pose())
             self._record_cam.set_render_mode(RenderMode.OPENGL)
@@ -151,7 +151,7 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
         if ((terminal or self._i == self._episode_length) and self._record_current_episode):
             self._append_final_frame(success)
             vid = np.array(self._recorded_images).transpose((0, 3, 1, 2))
-            vid_name = f'task{self._active_task_id}_rollout/var{self._active_variation_id}_rew{int(reward)}'
+            vid_name = f'task{self._active_task_id}_rollout/var{self._active_variation_id}' #_rew{int(reward)}'
             
             summaries.append( VideoSummary(vid_name, vid, fps=30) ) 
         return Transition(obs, reward, terminal, summaries=summaries) 

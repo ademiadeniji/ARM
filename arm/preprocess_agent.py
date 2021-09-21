@@ -82,14 +82,20 @@ class PreprocessAgent(Agent):
             ScalarSummary('%s/timeouts' % prefix,
                     self._replay_sample['timeout'].float().mean()),
         ]
-
+        fronts = []
         for k, v in self._replay_sample.items():
-            if 'rgb' in k or 'point_cloud' in k:
-                if 'rgb' in k:
-                    # Convert back to 0 - 1
-                    v = (v + 1.0) / 2.0
-                sums.append(ImageSummary('%s/%s' % (prefix, k), tile(v)))
-
+            # if 'rgb' in k or 'point_cloud' in k:
+            #     if 'rgb' in k:
+            #         # Convert back to 0 - 1
+            #         v = (v + 1.0) / 2.0
+            #     sums.append(ImageSummary('%s/%s' % (prefix, k), tile(v)))
+                
+            if 'front' in k  and  ('rgb' in k or 'point_cloud' in k ):
+                v = (v + 1.0) / 2.0 if 'rgb' in k else v 
+                fronts.append(tile(v)) # tile(v) has shape (b, 3, 128, 128)
+        fronts = torch.cat(fronts, dim=3)
+        sums.append(ImageSummary('%s/%s' % (prefix, 'front_cam_inputs'),  fronts))
+         
         if 'sampling_probabilities' in self._replay_sample:
             sums.extend([
                 HistogramSummary('replay/priority',

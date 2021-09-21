@@ -350,6 +350,7 @@ def create_agent_with_context(cfg: DictConfig, env,
                 inp_context_size=ctxt_size,
                 encode_context=cfg.dev.encode_context,
                 encode_context_size=cfg.dev.qnet_context_latent_size,
+                dev_cfgs=dict(cfg.dev),
                 )
         else:
             last = depth == len(cfg.method.voxel_sizes) - 1
@@ -367,6 +368,7 @@ def create_agent_with_context(cfg: DictConfig, env,
                 encode_context=cfg.dev.encode_context,
                 inp_context_size=cfg.dev.qnet_context_latent_size if (cfg.contexts.pass_down_context and cfg.dev.encode_context) else ctxt_size, #cfg.contexts.agent.embedding_size,
                 encode_context_size=cfg.dev.qnet_context_latent_size,
+                dev_cfgs=dict(cfg.dev),
                 )
 
         qattention_agent = QAttentionContextAgent(

@@ -11,3 +11,35 @@ contexts.update_freq=100000 framework.training_iterations=50000 \
 dev.one_hot=True  dev.one_hot_size=20 dev.encode_context=False \
 rlbench.demos=1 contexts.pass_down_context=True framework.wandb_logging=False \
 rlbench.demo_path=/home/mandi/front_rlbench_data
+
+# small batcb
+# ti5
+python launch_context.py tasks=['pick_up_cup'] run_name=OneHot-NoQEncode-NoPassDown-lr1e3 \
+contexts.update_freq=100000 framework.training_iterations=50000 \
+dev.one_hot=True  dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False \
+rlbench.demos=1  \
+replay.batch_size=32 method.lr=1e-3 rlbench.demo_path=/home/mandi/front_rlbench_data m
+
+# ti1:
+python launch_context.py tasks=['pick_up_cup'] run_name=OneHot-NoQEncode-NoPassDown-lr7e-4 \
+contexts.update_freq=100000 framework.training_iterations=50000 \
+dev.one_hot=True  dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False \
+rlbench.demos=1  \
+replay.batch_size=32 method.lr=7e-4
+
+python launch_context.py tasks=['pick_up_cup'] run_name=OneHot-NoQEncode-NoPassDown-lr7e-4 \
+contexts.update_freq=100000 framework.training_iterations=50000 \
+dev.one_hot=True  dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False \
+rlbench.demos=1  \
+replay.batch_size=48 method.lr=7e-4
+
+# dev: cat more 
+python launch_context.py tasks=['pick_up_cup'] run_name=OneHot-CatALL-NoQEncode-NoPassDown \
+contexts.update_freq=100000 framework.training_iterations=50000 \
+dev.one_hot=True  dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False \
+rlbench.demos=1  replay.batch_size=128 
+
+python launch_context.py tasks=['pick_up_cup'] run_name=OneHot-CatALL-NoQEncode-NoPassDown \
+contexts.update_freq=100000 framework.training_iterations=50000 \
+dev.one_hot=True  dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False \
+rlbench.demos=1  replay.batch_size=64
