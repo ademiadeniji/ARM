@@ -172,7 +172,7 @@ class RLBenchDemoDataset(Dataset):
             
             self._task_idx_list.append(all_variation_idxs)
             self._task_variation_tree.append(listed_var_idxs)
-            print('dataset got idxs:', self._task_variation_tree)
+            # print('dataset got idxs:', self._task_variation_tree)
         
         self.total_count = len(self._all_file_names)
         

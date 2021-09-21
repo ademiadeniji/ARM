@@ -14,13 +14,14 @@ class PreprocessAgent(Agent):
         self._pose_agent = pose_agent
         self._context_agent = context_agent 
 
-    def build(self, training: bool, device: torch.device = None, context_device: torch.device = None):
+    def build(self, training: bool, device: torch.device = None, context_device: torch.device = None, accelerator = None):
         # NOTE build context agent first to get its optim paramters
         if self._context_agent is not None:
             context_device = context_device if context_device is not None else device 
             self._context_agent.build(training, context_device)
         
-        self._pose_agent.build(training, device)
+        self._pose_agent.build(training, device, accelerator)
+        self._accelerator = accelerator
         self._device = device 
         self._replay_sample = None 
         
@@ -50,9 +51,12 @@ class PreprocessAgent(Agent):
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:
         
+        # observation = {
+        #     k: v.clone().detach().to(self._device) if isinstance(v, torch.Tensor) else \
+        #     torch.tensor(v).to(self._device)  for k, v in observation.items()}
         observation = {
-            k: v.clone().detach().to(self._device) if isinstance(v, torch.Tensor) else \
-            torch.tensor(v).to(self._device)  for k, v in observation.items()}
+            k: v.clone().detach() if isinstance(v, torch.Tensor) else \
+            torch.tensor(v)  for k, v in observation.items()}
         for k, v in observation.items():
             if 'rgb' in k:
                 observation[k] = self._norm_rgb_(v)

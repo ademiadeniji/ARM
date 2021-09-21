@@ -377,11 +377,13 @@ class SpatialSoftmax3D(torch.nn.Module):
             pos_y.reshape(self.depth * self.height * self.width)).float()
         pos_z = torch.from_numpy(
             pos_z.reshape(self.depth * self.height * self.width)).float()
+        # print('pos_z shape:', pos_z.shape)
         self.register_buffer('pos_x', pos_x)
         self.register_buffer('pos_y', pos_y)
-        self.register_buffer('pos_z', pos_z)
+        self.register_buffer('pos_z', pos_z) 
 
     def forward(self, feature):
+        feature = feature.detach()
         feature = feature.view(
             -1, self.height * self.width * self.depth)  # (B, c*d*h*w)
         softmax_attention = F.softmax(feature / self.temperature, dim=-1)

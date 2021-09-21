@@ -26,7 +26,7 @@ from arm.c2farm.context_agent import CONTEXT_KEY
 from yarr.utils.multitask_rollout_generator import TASK_ID, VAR_ID
 NAME = 'QAttention'
 REPLAY_BETA = 1.0
- 
+torch.autograd.set_detect_anomaly(True)
  
 class QFunction(nn.Module):
 
@@ -34,14 +34,12 @@ class QFunction(nn.Module):
                  unet_3d: nn.Module,
                  voxel_grid: VoxelGrid,
                  bounds_offset: float,
-                 rotation_resolution: float,
-                 device):
+                 rotation_resolution: float):
         super(QFunction, self).__init__()
         self._rotation_resolution = rotation_resolution
         self._voxel_grid = voxel_grid
         self._bounds_offset = bounds_offset
         self._qnet = copy.deepcopy(unet_3d)
-        self._qnet._dev = device
         self._qnet.build()
 
     def _argmax_3d(self, tensor_orig):
@@ -159,9 +157,12 @@ class QAttentionContextAgent(Agent):
         self._update_context_agent = update_context_agent
         self._pass_down_context = pass_down_context
 
-    def build(self, training: bool, device: torch.device = None):
+    def build(self, training: bool, device: torch.device = None, accelerator=None):
         if device is None:
             device = torch.device('cpu')
+        if accelerator is not None:
+            print('QAttentionAgent using accelerator device:', accelerator.device)
+            device = accelerator.device
 
         vox_grid = VoxelGrid(
             coord_bounds=self._coordinate_bounds,
@@ -172,16 +173,28 @@ class QAttentionContextAgent(Agent):
             max_num_coords=np.prod(self._image_resolution) * self._num_cameras,
         )
         self._vox_grid = vox_grid
+        self._accelerator = accelerator
+        #self._vox_grid = self._accelerator.prepare(vox_grid)
 
         self._q = QFunction(self._unet3d, vox_grid, self._bounds_offset,
-                            self._rotation_resolution,
-                            device).to(device).train(training)
+                            self._rotation_resolution).to(device).train(training)
+        if self._accelerator is not None:
+            self._q = self._accelerator.prepare(
+                QFunction(
+                    self._unet3d, vox_grid, self._bounds_offset, self._rotation_resolution).train(training)
+                    )
+
         self._q_target = None
         if training:
             self._q_target = QFunction(self._unet3d, vox_grid,
                                        self._bounds_offset,
-                                       self._rotation_resolution,
-                                       device).to(device).train(False)
+                                       self._rotation_resolution).to(device).train(False)
+            if self._accelerator is not None:
+                self._q_target = self._accelerator.prepare(
+                    QFunction(self._unet3d, vox_grid, self._bounds_offset,
+                                        self._rotation_resolution).train(False)
+                )
+
             for param in self._q_target.parameters():
                 param.requires_grad = False
             utils.soft_updates(self._q, self._q_target, 1.0)
@@ -192,6 +205,9 @@ class QAttentionContextAgent(Agent):
             self._optimizer = torch.optim.Adam(
                 q_params, lr=self._lr,
                 weight_decay=self._lambda_weight_l2)
+
+            if self._accelerator is not None:
+                self._optimizer = self._accelerator.prepare(self._optimizer)
 
             logging.info('# Q Params: %d' % sum(
                 p.numel() for p in self._q.parameters() if p.requires_grad))
@@ -209,6 +225,7 @@ class QAttentionContextAgent(Agent):
         self._coordinate_bounds = torch.tensor(self._coordinate_bounds,
                                                device=device).unsqueeze(0)
 
+        
         self._device = device
 
     def _extract_crop(self, pixel_action, observation):
@@ -336,7 +353,10 @@ class QAttentionContextAgent(Agent):
             prev_layer_voxel_grid=replay_sample.get('prev_layer_voxel_grid', None),
             context=context,
             )
-        coords, rot_and_grip_indicies = self._q.choose_highest_action(q, q_rot_grip)
+        if self._accelerator is not None:
+            coords, rot_and_grip_indicies = self._q.module.choose_highest_action(q, q_rot_grip)
+        else:
+            coords, rot_and_grip_indicies = self._q.choose_highest_action(q, q_rot_grip)
 
         with_rot_and_grip = rot_and_grip_indicies is not None
 
@@ -351,7 +371,10 @@ class QAttentionContextAgent(Agent):
                 obs_tp1, proprio_tp1, pcd_tp1, bounds_tp1,
                 prev_layer_voxel_grid=replay_sample.get('prev_layer_voxel_grid_tp1', None),
                 context=context)
-            coords_tp1, rot_and_grip_indicies_tp1 = self._q.choose_highest_action(q_tp1, q_rot_grip_tp1)
+            if self._accelerator is not None:
+                coords_tp1, rot_and_grip_indicies_tp1 = self._q.module.choose_highest_action(q_tp1, q_rot_grip_tp1)
+            else:
+                coords_tp1, rot_and_grip_indicies_tp1 = self._q.choose_highest_action(q_tp1, q_rot_grip_tp1)
 
             q_tp1_at_voxel_idx = self._get_value_from_voxel_index(q_tp1_targ, coords_tp1)
             if with_rot_and_grip:
@@ -376,9 +399,14 @@ class QAttentionContextAgent(Agent):
         total_loss = ((combined_delta + qreg_loss) * loss_weights).mean()
 
         self._optimizer.zero_grad()
-        total_loss.backward()
-        if self._grad_clip is not None:
-            nn.utils.clip_grad_value_(self._q.parameters(), self._grad_clip)
+        if self._accelerator is not None:
+            self._accelerator.backward(total_loss)
+            if self._grad_clip is not None:
+                self._accelerator.clip_grad_value_(self._q.parameters(), self._grad_clip)
+        else:
+            total_loss.backward()
+            if self._grad_clip is not None:
+                nn.utils.clip_grad_value_(self._q.parameters(), self._grad_clip)
         self._optimizer.step()
 
         self._summaries = {
@@ -502,18 +530,18 @@ class QAttentionContextAgent(Agent):
             summaries.extend([
                 ImageSummary('%s/crops/%s' % (self._name, name), crops)])
 
-        for tag, param in self._q.named_parameters():
-            assert not torch.isnan(param.grad.abs() <= 1.0).all()
-            summaries.append(
-                HistogramSummary('%s/gradient/%s' % (self._name, tag),
-                                 param.grad))
-            summaries.append(
-                HistogramSummary('%s/weight/%s' % (self._name, tag),
-                                 param.data))
+        # for tag, param in self._q.named_parameters():
+        #     assert not torch.isnan(param.grad.abs() <= 1.0).all()
+        #     summaries.append(
+        #         HistogramSummary('%s/gradient/%s' % (self._name, tag),
+        #                          param.grad))
+        #     summaries.append(
+        #         HistogramSummary('%s/weight/%s' % (self._name, tag),
+        #                          param.data))
 
-        for name, t in self._q.latents().items():
-            summaries.append(
-                HistogramSummary('%s/activations/%s' % (self._name, name), t))
+        # for name, t in self._q.latents().items():
+        #     summaries.append(
+        #         HistogramSummary('%s/activations/%s' % (self._name, name), t))
 
         return summaries
 
@@ -533,5 +561,10 @@ class QAttentionContextAgent(Agent):
                        map_location=torch.device('cpu')))
 
     def save_weights(self, savedir: str):
-        torch.save(
-            self._q.state_dict(), os.path.join(savedir, '%s.pt' % self._name))
+        if self._accelerator is not None:
+            torch.save(
+                self._q.module.state_dict(), os.path.join(savedir, '%s.pt' % self._name))
+        
+        else:
+            torch.save(
+                self._q.state_dict(), os.path.join(savedir, '%s.pt' % self._name))

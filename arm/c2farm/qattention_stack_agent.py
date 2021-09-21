@@ -130,8 +130,10 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
         self._pass_down_context = pass_down_context
         self._context = None 
 
-    def build(self, training: bool, device=None) -> None:
-        super(QAttentionStackContextAgent, self).build(training, device)
+    def build(self, training: bool, device=None, accelerator=None) -> None:
+        # super(QAttentionStackContextAgent, self).build(training, device)
+        for qa in self._qattention_agents:
+            qa.build(training, device, accelerator)
         # context agent should already be built  
         if device is None:
             device = torch.device('cpu')
@@ -237,10 +239,7 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
             )
 
         return summaries
-                
-
-
-
+          
     def act_summaries(self) -> List[Summary]:
         # s = []
         # for qa in self._qattention_agents:

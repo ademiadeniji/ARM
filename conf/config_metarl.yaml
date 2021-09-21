@@ -30,7 +30,7 @@ framework:
     save_freq: 100
     train_envs: 2
     eval_envs: 1
-    env_runner_gpu: 2
+    env_runner_gpu: 5
     replay_ratio: ${replay.batch_size}
     transitions_before_train: 100
     tensorboard_logging: True

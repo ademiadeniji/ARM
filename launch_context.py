@@ -179,7 +179,7 @@ def run_seed(
         ) 
 
     logdir = join(cfg.log_path, 'seed%d' % seed)
-    os.makedirs(logdir, exist_ok=False)
+    os.makedirs(logdir, exist_ok=True)
     OmegaConf.save( config=cfg, f=join(logdir, 'config.yaml') )
     weightsdir = join(logdir, 'weights')
     

@@ -214,7 +214,6 @@ class Qattention3DNetWithContext(Qattention3DNet):
                  activation: str = 'relu',
                  dense_feats: int = 32,
                  include_prev_layer = False, 
-
                  ):
         super(Qattention3DNet, self).__init__()
         self._in_channels = in_channels
@@ -387,9 +386,10 @@ class Qattention3DNetWithContext(Qattention3DNet):
 
         u1 = self._up1(u)
         f1 = self._final(torch.cat([d0, u1], dim=1))
+        # print('line 390 f1 shape:', f1.shape)
         trans = self._final2(f1)
 
-        feats.extend([self._ss_final(f1), self._global_maxp(f1).view(b, -1)])
+        feats.extend([self._ss_final(f1), self._global_maxp(f1).view(b, -1) ])
 
         self.latent_dict = {
             'd0': d0.mean(-1).mean(-1).mean(-1),
