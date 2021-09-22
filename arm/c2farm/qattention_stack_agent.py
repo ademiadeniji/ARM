@@ -237,10 +237,7 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
             )
 
         return summaries
-                
-
-
-
+       
     def act_summaries(self) -> List[Summary]:
         # s = []
         # for qa in self._qattention_agents:

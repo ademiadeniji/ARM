@@ -19,17 +19,20 @@ rlbench:
 
 replay:
     batch_size: 64 # total buff size, no task-aggregate anymore 
+    total_batch_size: ???
     timesteps: 1
     prioritisation: True
     use_disk: False
     path: '/tmp/arm_sanity/replay'  # Only used when use_disk is True.
     share_across_tasks: True
+    buffer_key: 'variation_id' # either var or task id, use this to look for buffers
+    replay_size: 200000 # total size 
 
 framework:
     log_freq:  100 # set to bigger to not save so many media files 
     save_freq: 100
-    train_envs: 2
-    eval_envs: 1
+    train_envs: 3
+    eval_envs: 3
     env_runner_gpu: 2
     replay_ratio: ${replay.batch_size}
     transitions_before_train: 100
@@ -59,12 +62,12 @@ dev:
     one_hot_size: 20   
     encode_context: False  # if one-hot, prolly ok not to encode
     qnet_context_latent_size: 16
-    
     cat_down1: 1
     cat_down2: 1
     cat_up1: 1
     cat_up2: 1
     cat_f1: 1
+    buffers_per_batch: 20
 
 contexts:
   num_update_itrs: 5

@@ -114,7 +114,9 @@ def run_seed(
                 cfg.replay.timesteps,
                 cfg.replay.prioritisation,
                 replay_path if cfg.replay.use_disk else None, cams, env,
-                cfg.method.voxel_sizes)
+                cfg.method.voxel_sizes,
+                replay_size=cfg.replay.replay_size
+                )
             for i, (one_task, its_variations) in enumerate(zip(all_tasks, all_variations)):
                 for task_var in its_variations:
                     var = int( task_var.split("_")[-1]) 
@@ -136,17 +138,22 @@ def run_seed(
             replays = [r]
         else:
             replays = []
+            cfg.replay.replay_size = int(cfg.replay.replay_size / sum([len(_vars) for _vars in all_variations]) )
+            logging.info(f'Splitting total replay size into each buffer: {cfg.replay.replay_size}')
             for i, (one_task, its_variations) in enumerate(zip(all_tasks, all_variations)):
                 for task_var in its_variations:
                     var = int( task_var.split("_")[-1]) 
                     r = c2farm.launch_utils.create_replay(
-                        cfg.replay.batch_size, cfg.replay.timesteps,
+                        cfg.replay.batch_size, 
+                        cfg.replay.timesteps,
                         cfg.replay.prioritisation,
                         replay_path if cfg.replay.use_disk else None, cams, env,
-                        cfg.method.voxel_sizes)
+                        cfg.method.voxel_sizes, 
+                        replay_size=cfg.replay.replay_size)
                     c2farm.launch_utils.fill_replay(
                         r, one_task, env, cfg.rlbench.demos,
-                        cfg.method.demo_augmentation, cfg.method.demo_augmentation_every_n,
+                        cfg.method.demo_augmentation, 
+                        cfg.method.demo_augmentation_every_n,
                         cams, cfg.rlbench.scene_bounds,
                         cfg.method.voxel_sizes, 
                         cfg.method.bounds_offset,
@@ -157,7 +164,8 @@ def run_seed(
                         )
                     replays.append(r)
                 print(f"Task id {i}: {one_task}, **created** and filled replay for {len(its_variations)} variations")
-                
+            cfg.replay.total_batch_size = int(cfg.replay.batch_size * cfg.dev.buffers_per_batch)
+            replay_ratio = cfg.replay.total_batch_size
 
         if cfg.mt_only:
             agent = c2farm.launch_utils.create_agent(cfg, env)
@@ -217,6 +225,7 @@ def run_seed(
         max_fails=cfg.rlbench.max_fails,
         device_list=env_gpus,
         share_buffer_across_tasks=cfg.replay.share_across_tasks,
+        buffer_key=cfg.replay.buffer_key,
         )  
 
     if cfg.framework.wandb_logging:
@@ -273,6 +282,7 @@ def run_seed(
         no_context=cfg.mt_only,
         one_hot=cfg.dev.one_hot,
         num_vars=num_all_vars,
+        buffers_per_batch=cfg.dev.buffers_per_batch,
         )
  
     train_runner.start()

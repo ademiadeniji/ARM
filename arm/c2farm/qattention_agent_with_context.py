@@ -26,7 +26,7 @@ from arm.c2farm.context_agent import CONTEXT_KEY
 from yarr.utils.multitask_rollout_generator import TASK_ID, VAR_ID
 NAME = 'QAttention'
 REPLAY_BETA = 1.0
- 
+
  
 class QFunction(nn.Module):
 
@@ -407,10 +407,25 @@ class QAttentionContextAgent(Agent):
         priority = (combined_delta + 1e-10).sqrt()
         priority /= priority.max()
         prev_priority = replay_sample.get('priority', 0)
+        
+        # print('QAttentionAgent: priority shape', priority.shape )
+        task_ids, variation_ids = replay_sample[TASK_ID], replay_sample[VAR_ID]
+        task_masks = [ (task_ids == j) for j in task_ids  ]
+        task_prio = torch.stack(
+            [torch.mean(torch.masked_select(priority, msk)) for msk in task_masks])
+        task_prio += replay_sample.get('task_prio', 0)
+
+        var_masks = [ (variation_ids == j) for j in variation_ids ]
+        var_prio = torch.stack(
+            [torch.mean(torch.masked_select(priority, msk)) for msk in var_masks])
+        var_prio += replay_sample.get('var_prio', 0)
+        # print('QAttentionAgent: task, var priors', task_prio, var_prio )
 
         # print('\n done updating layer:', self._layer)
         return {
             'priority': priority + prev_priority,
+            'task_prio': task_prio,
+            'var_prio': var_prio,
             'prev_layer_voxel_grid': voxel_grid,
             'prev_layer_voxel_grid_tp1': voxel_grid_tp1,
             'prev_layer_encoded_context': encoded_context,
