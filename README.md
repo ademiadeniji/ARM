@@ -91,9 +91,12 @@ pip install -r RLBench/requirements.txt
 pip install RLBench/.
 
 
-git clone git@github.com:stepjam/YARR.git
+git clone git@github.com:MandiZhao/YARR.git
 pip install -r YARR/requirements.txt
 pip install -e YARR/.
+cd YARR
+git checkout dev
+cd ..
 
 pip install natsort pyquaternion 
 git clone git@github.com:rll-research/ARM.git
