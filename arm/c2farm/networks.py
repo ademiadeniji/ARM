@@ -1,14 +1,17 @@
 import torch
 import torch.nn as nn
 import logging
-
+from functools import partial 
 import sys
-# from pathlib import Path
-# if str(Path.cwd()) not in sys.path:
-#     sys.path.insert(0, str(Path.cwd()))
+from pathlib import Path
+if str(Path.cwd()) not in sys.path:
+    sys.path.insert(0, str(Path.cwd()))
 
-from arm.network_utils import Conv3DInceptionBlock, DenseBlock, SpatialSoftmax3D, \
-    Conv3DInceptionBlockUpsampleBlock, Conv3DBlock, Conv3DResNetBlock, Conv3DResNetUpsampleBlock
+from arm.network_utils import \
+    Conv3DInceptionBlock, Conv3DInceptionBlockUpsampleBlock, \
+    DenseBlock, SpatialSoftmax3D, \
+    Conv3DBlock, Conv3DUpsampleBlock, \
+    Conv3DResNetBlock, Conv3DResNetUpsampleBlock
 from einops import rearrange, reduce, repeat, parse_shape
 
 class Qattention3DNet(nn.Module):
@@ -220,7 +223,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
                  activation: str = 'relu',
                  dense_feats: int = 32,
                  include_prev_layer = False, # has been false  
-                 dev_cfgs: dict = {},  
+                 dev_cfgs: dict = {},   
                  ):
         super(Qattention3DNet, self).__init__()
         self._in_channels = in_channels
@@ -245,11 +248,15 @@ class Qattention3DNetWithContext(Qattention3DNet):
         print(f'Qattention3DNet: Input context embedding size: {inp_context_size}, output size {encode_context_size if encode_context else inp_context_size}')
 
     
-    def build(self, dev=False):
+    def build(self):
         block_class = Conv3DInceptionBlock
         upsample_block_class = Conv3DInceptionBlockUpsampleBlock
-        if dev:
-            block_class = Conv3DResNetBlock 
+        if self._dev_cfgs.get('conv3d', False):
+            block_class = partial(Conv3DBlock, 
+                 kernel_sizes=3, strides=1)
+             # Conv3DResNetBlock 
+            upsample_block_class =  partial(Conv3DUpsampleBlock,
+                kernel_sizes=3, strides=1)
         
         use_residual = False
         self._build_calls += 1
@@ -333,17 +340,17 @@ class Qattention3DNetWithContext(Qattention3DNet):
                     spatial_size, spatial_size, spatial_size,
                     self._down3.out_channels)
                 self._up3 = upsample_block_class(
-                    self._kernels, self._kernels, 2, norm=self._norm,
+                    self._kernels, self._kernels, scale_factor=2, norm=self._norm,
                     activation=self._activation, residual=use_residual)
             self._up2 = upsample_block_class(
-                k2, self._kernels, 2, norm=self._norm,
+                k2, self._kernels, scale_factor=2, norm=self._norm,
                 activation=self._activation, residual=use_residual)
 
         if self._dev_cfgs.get('cat_up1', False):
             k1 = k1 + self._encode_context_size if self._encode_context else k1 + self._inp_context_size
             
         self._up1 = upsample_block_class(
-            k1, self._kernels, 2, norm=self._norm,
+            k1, self._kernels, scale_factor=2, norm=self._norm,
             activation=self._activation, residual=use_residual)
 
         self._global_maxp = nn.AdaptiveMaxPool3d(1)
@@ -400,16 +407,16 @@ class Qattention3DNetWithContext(Qattention3DNet):
             ctxt = context 
         # print('networks Qnet forward: ctxt shape', ctxt.shape)
         rep0 = repeat(ctxt, 'b c -> b c d h w', d=d, h=h, w=w)
-        # print('networks Qnet forward: repeated shape', repeated.shape) # b, 64, 16, 16, 16
+        # print('networks Qnet forward: repeated shape', rep0.shape) # b, 64, 16, 16, 16
         down0_in = torch.cat([x, rep0], dim=1)
 
         d0 = self._down0(down0_in)
-        # print('forward Qnet: d0 shape', d0.shape) [b, 64, 16, 16, 16]
+        # print('forward Qnet: d0 shape', d0.shape) #[b, 64, 16, 16, 16]
         ss0 = self._ss0(d0)
         maxp0 = self._global_maxp(d0).view(b, -1)
         down1_in = self._local_maxp(d0)
-        # print('forward Qnet: maxp0 shape', maxp0.shape) [b, 64]
-        # print('forward Qnet: down1_in shape', down1_in.shape) [b, 64, 8, 8, 8]
+        # print('forward Qnet: maxp0 shape', maxp0.shape) #[b, 64]
+        # print('forward Qnet: down1_in shape', down1_in.shape) #[b, 64, 8, 8, 8]
         
         if self._dev_cfgs.get('cat_down1', False):
             _, _, dd, hh, ww = down1_in.shape
@@ -419,34 +426,36 @@ class Qattention3DNetWithContext(Qattention3DNet):
         d1 = u = self._down1(down1_in)
         ss1 = self._ss1(d1)
         maxp1 = self._global_maxp(d1).view(b, -1)
-        # print('forward Qnet: maxp1 shape', maxp1.shape) [b, 128]
+        # print('forward Qnet: maxp1 shape', maxp1.shape) #[b, 128]
 
         feats = [ss0, maxp0, ss1, maxp1]
 
         if self._voxel_size > 8:
             down2_in = self._local_maxp(d1)
-            # print('forward Qnet: down2_in shape', down2_in.shape) [b, 128, 4, 4, 4]
+            # print('forward Qnet: down2_in shape', down2_in.shape) # [b, 128, 4, 4, 4]
             if self._dev_cfgs.get('cat_down2', False):
                 _, _, dd, hh, ww = down2_in.shape
                 rep2 = repeat(ctxt, 'b c -> b c d h w', d=dd, h=hh, w=ww)
                 down2_in = torch.cat([down2_in, rep2], dim=1)
                 # print('forward Qnet : cated down2_in shape', down2_in.shape)
             d2 = u = self._down2(down2_in)
+            # print('forward Qnet: down2_out shape', d2.shape) # [b, 128, 4, 4, 4]
             feats.extend([self._ss2(d2), self._global_maxp(d2).view(b, -1)])
             if self._voxel_size > 16:
                 d3 = self._down3(self._local_maxp(d2))
                 feats.extend([self._ss3(d3), self._global_maxp(d3).view(b, -1)])
                 u3 = self._up3(d3)
-                u = torch.cat([d2, u3], dim=1)
+                u = torch.cat([d2, u3], dim=1) 
             
-            # print('forward Qnet: up2_in shape', u.shape) [b, 256, 4, 4, 4]
             up2_in = u
+            # print('forward Qnet: up2_in shape', up2_in.shape) # [b, 256, 4, 4, 4]
             if self._dev_cfgs.get('cat_up2', False):
                 _, _, dd, hh, ww = up2_in.shape
                 rep22 = repeat(ctxt, 'b c -> b c d h w', d=dd, h=hh, w=ww)
                 up2_in = torch.cat([up2_in, rep22], dim=1)
                 # print('forward Qnet : cated up2_in shape', up2_in.shape)
             u2 = self._up2(up2_in)
+            # print('forward Qnet: up2_out shape', u2.shape) # torch.Size([b, 64, 8, 8, 8])
             u = torch.cat([d1, u2], dim=1)
 
         # print('forward Qnet: up1_in shape', u.shape) [b, 192, 8, 8, 8]
@@ -459,7 +468,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
         u1 = self._up1(up1_in)
 
         f1_in = torch.cat([d0, u1], dim=1)
-        # print('forward Qnet: f1 shape', f1.shape)  [b, 64, 16, 16, 16]
+        # print('forward Qnet: f1 shape', f1_in.shape) #[b, 64, 16, 16, 16]
         if self._dev_cfgs.get('cat_f1', False):
             _, _, dd, hh, ww = f1_in.shape
             repf1 = repeat(ctxt, 'b c -> b c d h w', d=dd, h=hh, w=ww)
@@ -468,7 +477,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
         f1 = self._final(f1_in)
         
         trans = self._final2(f1)
-        # print('forward Qnet: trans shape', trans.shape) [b, 1, 16, 16, 16]
+        # print('forward Qnet: trans shape', trans.shape) #[b, 1, 16, 16, 16]
 
         feats.extend([self._ss_final(f1), self._global_maxp(f1).view(b, -1)])
 
@@ -520,8 +529,25 @@ if __name__ == '__main__':
         activation='lrelu',
         low_dim_size=10,
         inp_context_size=20,
+        dev_cfgs={'conv3d':False},
         )
-    qnet.build(dev=False)
+    qnet.build()
+    num_params = sum([p.numel() for p in qnet.parameters() if p.requires_grad])
+    print(num_params)
+
+    qnet = Qattention3DNetWithContext(
+        in_channels=10,
+        out_channels=1,
+        voxel_size=16,
+        out_dense=0,
+        kernels=64,
+        norm=None, 
+        dense_feats=128,
+        activation='lrelu',
+        low_dim_size=10,
+        inp_context_size=20,
+        dev_cfgs={'conv3d': True},
+        )
     num_params = sum([p.numel() for p in qnet.parameters() if p.requires_grad])
     print(num_params)
     

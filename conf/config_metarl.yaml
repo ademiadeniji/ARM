@@ -71,6 +71,7 @@ dev:
     cat_up2: False
     cat_f1: False
     buffers_per_batch: 20
+    conv3d: False 
 
 contexts:
   num_update_itrs: 5

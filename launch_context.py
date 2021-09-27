@@ -310,6 +310,7 @@ def main(cfg: DictConfig) -> None:
                                     cfg.rlbench.camera_resolution)
     
     if cfg.rlbench.num_vars > -1:
+        cfg.dev.buffers_per_batch = cfg.rlbench.num_vars
         logging.info(f'Creating Env with only {cfg.rlbench.num_vars} variation and not sampling others!')
     env = CustomMultiTaskRLBenchEnv(
         task_classes=task_classes, task_names=tasks, observation_config=obs_config,

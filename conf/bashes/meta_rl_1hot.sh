@@ -71,11 +71,38 @@ contexts.update_freq=100000 framework.training_iterations=50000 \
 dev.one_hot=True  dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False \
 rlbench.demos=1  rlbench.demo_path=/shared/mandi/all_rlbench_data dev.cat_f1=False  
 
+# dev: 3dconv block instead of inception
+python launch_context.py tasks=['pick_up_cup']  rlbench.demos=10 dev.one_hot=True  \
+    replay.batch_size=64 dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False \
+    rlbench.num_vars=2 dev.conv3d=True 
+
+
 # dev: single var + cat
 python launch_context.py tasks=['pick_up_cup']  rlbench.demos=10 dev.one_hot=True  \
-    replay.share_across_tasks=True replay.batch_size=64 run_name=2Var-OneHot-CatOnce-1Buffer \
+    replay.batch_size=64 run_name=2Var-OneHot-CatOnce-1Buffer \
     dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False rlbench.num_vars=2
+# ti5
+python launch_context.py tasks=['pick_up_cup']  rlbench.demos=10 dev.one_hot=True  \
+    replay.batch_size=64 run_name=2Var-OneHot-CatTwice-1Buffer \
+    dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False \
+    rlbench.num_vars=2 rlbench.demo_path=/home/mandi/front_rlbench_data dev.cat_up1=True 
 
+python launch_context.py tasks=['pick_up_cup']  rlbench.demos=10 dev.one_hot=True  \
+    replay.batch_size=64 run_name=2Var-OneHot-CatTwice-2Buffer \
+    dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False \
+    rlbench.num_vars=2 rlbench.demo_path=/home/mandi/front_rlbench_data dev.cat_up1=True \
+    replay.share_across_tasks=False dev.buffers_per_batch=2 
+
+# rtxs1
+python launch_context.py tasks=['pick_up_cup']  rlbench.demos=10 dev.one_hot=True  \
+    replay.batch_size=128 run_name=2Var-OneHot-CatOnce-1Buffer \
+    dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False \
+    rlbench.num_vars=2 rlbench.demo_path=/shared/mandi/all_rlbench_data 
+# txl1
+python launch_context.py tasks=['pick_up_cup']  rlbench.demos=10 dev.one_hot=True  \
+    replay.batch_size=128 run_name=10Var-OneHot-CatOnce-1Buffer \
+    dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False \
+    rlbench.num_vars=10 rlbench.demo_path=/shared/mandi/all_rlbench_data 
 
 
 # dev: Multi-Buffer, ti1
