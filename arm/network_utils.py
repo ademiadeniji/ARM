@@ -11,6 +11,8 @@ LRELU_SLOPE = 0.02
 def act_layer(act):
     if act == 'relu':
         return nn.ReLU()
+    if act == 'inp_relu':
+        return nn.ReLU(inplace=True)
     elif act == 'lrelu':
         return nn.LeakyReLU(LRELU_SLOPE)
     elif act == 'elu':
@@ -22,6 +24,11 @@ def act_layer(act):
     else:
         raise ValueError('%s not recognized.' % act)
 
+def norm_layer3d(norm, channels):
+    if norm == 'batch':
+        return nn.BatchNorm3d(channels)
+    else:
+        raise ValueError('%s not recognized.' % norm)
 
 def norm_layer2d(norm, channels):
     if norm == 'batch':
@@ -114,7 +121,7 @@ class Conv3DBlock(nn.Module):
             nn.init.kaiming_uniform_(self.conv3d.weight, a=LRELU_SLOPE,
                                      nonlinearity='leaky_relu')
             nn.init.zeros_(self.conv3d.bias)
-        elif activation == 'relu':
+        elif activation == 'relu' or activation == 'inp_relu':
             nn.init.kaiming_uniform_(self.conv3d.weight, nonlinearity='relu')
             nn.init.zeros_(self.conv3d.bias)
         else:
@@ -357,6 +364,68 @@ class Conv3DInceptionBlock(nn.Module):
                                    self._1x1conv_b(x)))], 1)
 
 
+class Conv3DResNetBlock(nn.Module):
+    """ 
+    ResNet blocks are simpler: no concat, just 3 layers of convolution and residual connection 
+    3dBatchnorm and Inplace Relu are defaults from SlowFast 
+    """
+    def __init__(self, in_channels, out_channels, norm="batch", activation="inp_relu",
+                 style='bottleneck', residual=True):
+        super(Conv3DResNetBlock, self).__init__()
+        if style == 'basic':
+            # smaller block, just two 3x3convs
+            latent = out_channels // 2
+            layers = [
+                Conv3DBlock(in_channels, latent, kernel_sizes=3, strides=1, 
+                    norm=norm, activation=activation),
+                Conv3DBlock(latent, out_channels, kernel_sizes=3, strides=1, 
+                    norm=norm, activation=activation),
+            ] 
+        elif style == 'bottleneck':
+            latent = out_channels // 1
+            layers = [
+                Conv3DBlock(in_channels, out_channels // 2, kernel_sizes=1, strides=1, 
+                    norm=norm, activation=activation),
+                Conv3DBlock(out_channels // 2, out_channels, kernel_sizes=3, strides=1, 
+                    norm=norm, activation=activation),
+                Conv3DBlock(out_channels, out_channels, kernel_sizes=1, strides=1, 
+                    norm=norm, activation=activation)
+                    ]
+        else:
+            raise ValueError('%s not recognized.' % style)
+        
+        self.activate = act_layer(activation)
+        self._layers = nn.Sequential(*layers)
+        self.out_channels = out_channels   
+
+    def forward(self, x):
+        out = self._layers(x)
+        return self.activate(x + out)
+
+
+class Conv3DResNetUpsampleBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, scale_factor,
+                  norm="batch", activation="inp_relu",  style='bottleneck', residual=True):
+        super(Conv3DResNetUpsampleBlock, self).__init__()
+        layer = [] 
+        convt_block = Conv3DResNetBlock(
+            in_channels, out_channels, norm, activation, style)
+        layer.append(convt_block)
+
+        if scale_factor > 1:
+            layer.append(nn.Upsample(
+                scale_factor=scale_factor, mode='trilinear',
+                align_corners=False))
+
+        convt_block = Conv3DResNetBlock(
+            out_channels, out_channels, norm, activation, style)
+        layer.append(convt_block)
+        self.conv_up = nn.Sequential(*layer)
+
+    def forward(self, x):
+        return self.conv_up(x)
+
+
 class SpatialSoftmax3D(torch.nn.Module):
 
     def __init__(self, depth, height, width, channel):
@@ -394,6 +463,7 @@ class SpatialSoftmax3D(torch.nn.Module):
         expected_xy = torch.cat([expected_x, expected_y, expected_z], 1)
         feature_keypoints = expected_xy.view(-1, self.channel * 3)
         return feature_keypoints
+
 
 class SiameseCNNModel(nn.Module):
     """Note(Mandi): migrated from QAttentionMultitask, use this for context embedder"""
@@ -469,3 +539,82 @@ class SiameseCNNWithFCModel(SiameseCNNModel):
         y = self._maxp(y).squeeze(-1).squeeze(-1)
         y = self._mlp(y)
         return y
+
+if __name__ == '__main__':
+    block_cl = Conv3DResNetBlock
+    block = block_cl(
+        in_channels=10,
+        out_channels=64,
+        style='bottleneck'
+    )
+    num_params = sum([p.numel() for p in block.parameters() if p.requires_grad])
+    print(num_params)
+
+    block = block_cl(
+        in_channels=10,
+        out_channels=64,
+        style='basic'
+    )
+    num_params = sum([p.numel() for p in block.parameters() if p.requires_grad])
+    print(num_params)
+
+
+    block = Conv3DInceptionBlock(
+        in_channels=10,
+        out_channels=64, 
+    )
+    num_params = sum([p.numel() for p in block.parameters() if p.requires_grad])
+    print(num_params)
+
+    block = Conv3DBlock(
+        in_channels=10,
+        out_channels=64,
+        kernel_sizes=3, 
+        strides=1,  
+    )
+    num_params = sum([p.numel() for p in block.parameters() if p.requires_grad])
+    print('3D conv block', num_params)
+
+    block = Conv3DResNetUpsampleBlock(
+        in_channels=10,
+        out_channels=64, 
+        scale_factor=2,
+        style='bottleneck'
+    )
+    num_params = sum([p.numel() for p in block.parameters() if p.requires_grad])
+    print('upsample bottleneck', num_params)
+
+    block = Conv3DResNetUpsampleBlock(
+        in_channels=10,
+        out_channels=64, 
+        scale_factor=2,
+        style='basic'
+    )
+    num_params = sum([p.numel() for p in block.parameters() if p.requires_grad])
+    print('upsample basic', num_params)
+
+
+    block = Conv3DInceptionBlockUpsampleBlock(
+        in_channels=10,
+        out_channels=64, 
+        scale_factor=2,
+    )
+    num_params = sum([p.numel() for p in block.parameters() if p.requires_grad])
+    print('upsample Inception', num_params)
+
+    # from arm.c2farm.networks import Qattention3DNetWithContext
+    # qnet = Qattention3DNetWithContext(
+    #     in_channels=10,
+    #     out_channels=1,
+    #     voxel_size=16,
+    #     out_dense=0,
+    #     kernels=64,
+    #     norm=None, 
+    #     dense_feats=128,
+    #     activation='lrelu',
+    #     low_dim_size=10
+    #     )
+
+
+
+

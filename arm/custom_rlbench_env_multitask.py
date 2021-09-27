@@ -46,12 +46,13 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
                  headless=True,
                  swap_task_every: int = 1,
                  reward_scale: int = 100,
-                 num_video_limit: int = 3, # don't log too many videos of the same reward 
+                 num_video_limit: int = 3, # don't log too many videos of the same reward
+                 use_variations: bool = False,
                  ):
         super(CustomMultiTaskRLBenchEnv, self).__init__(
             task_classes, task_names, 
             observation_config, action_mode,
-            dataset_root, channels_last, headless, swap_task_every)
+            dataset_root, channels_last, headless, swap_task_every, use_variations)
         self._reward_scale = reward_scale
         self._episode_index = 0
         self._record_current_episode = False  

@@ -1,8 +1,14 @@
 import torch
 import torch.nn as nn
 import logging
+
+import sys
+# from pathlib import Path
+# if str(Path.cwd()) not in sys.path:
+#     sys.path.insert(0, str(Path.cwd()))
+
 from arm.network_utils import Conv3DInceptionBlock, DenseBlock, SpatialSoftmax3D, \
-    Conv3DInceptionBlockUpsampleBlock, Conv3DBlock
+    Conv3DInceptionBlockUpsampleBlock, Conv3DBlock, Conv3DResNetBlock, Conv3DResNetUpsampleBlock
 from einops import rearrange, reduce, repeat, parse_shape
 
 class Qattention3DNet(nn.Module):
@@ -213,9 +219,8 @@ class Qattention3DNetWithContext(Qattention3DNet):
                  norm: str = None,
                  activation: str = 'relu',
                  dense_feats: int = 32,
-                 include_prev_layer = False, 
-                 dev_cfgs: dict = {}, 
-                
+                 include_prev_layer = False, # has been false  
+                 dev_cfgs: dict = {},  
                  ):
         super(Qattention3DNet, self).__init__()
         self._in_channels = in_channels
@@ -240,21 +245,26 @@ class Qattention3DNetWithContext(Qattention3DNet):
         print(f'Qattention3DNet: Input context embedding size: {inp_context_size}, output size {encode_context_size if encode_context else inp_context_size}')
 
     
-    def build(self):
+    def build(self, dev=False):
+        block_class = Conv3DInceptionBlock
+        upsample_block_class = Conv3DInceptionBlockUpsampleBlock
+        if dev:
+            block_class = Conv3DResNetBlock 
+        
         use_residual = False
         self._build_calls += 1
         if self._build_calls != 1:
             raise RuntimeError('Build needs to be called once.')
 
         spatial_size = self._voxel_size
-        self._input_preprocess = Conv3DInceptionBlock(
+        self._input_preprocess = block_class(
             self._in_channels, self._kernels, norm=self._norm,
             activation=self._activation)
 
         d0_ins = self._input_preprocess.out_channels
         if self._include_prev_layer:
             PREV_VOXEL_CHANNELS = 0
-            self._input_preprocess_prev_layer = Conv3DInceptionBlock(
+            self._input_preprocess_prev_layer = block_class(
                 self._in_channels + PREV_VOXEL_CHANNELS, self._kernels, norm=self._norm,
                 activation=self._activation)
             d0_ins += self._input_preprocess_prev_layer.out_channels
@@ -273,7 +283,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
         else:
             logging.info('Warning - Not encoding context in Qattention3DNetWithContext')
             d0_ins += self._inp_context_size 
-        self._down0 = Conv3DInceptionBlock(
+        self._down0 = block_class(
             d0_ins, self._kernels, norm=self._norm,
             activation=self._activation, residual=use_residual)
         self._ss0 = SpatialSoftmax3D(
@@ -284,7 +294,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
         d1_ins = self._down0.out_channels
         if self._dev_cfgs.get('cat_down1', False):
             d1_ins = d1_ins + self._encode_context_size if self._encode_context else d1_ins + self._inp_context_size 
-        self._down1 = Conv3DInceptionBlock(
+        self._down1 = block_class(
             d1_ins, self._kernels * 2, norm=self._norm,
             activation=self._activation, residual=use_residual)
         self._ss1 = SpatialSoftmax3D(
@@ -301,7 +311,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
             if self._dev_cfgs.get('cat_down2', False):
                 d2_ins = d2_ins + self._encode_context_size if self._encode_context else d2_ins + self._inp_context_size 
 
-            self._down2 = Conv3DInceptionBlock(
+            self._down2 = block_class(
                 d2_ins, self._kernels * 4, norm=self._norm,
                 activation=self._activation,  residual=use_residual)
             flat_size += self._down2.out_channels * 4
@@ -315,24 +325,24 @@ class Qattention3DNetWithContext(Qattention3DNet):
                 k2 = k2 + self._encode_context_size if self._encode_context else k2 + self._inp_context_size
             if self._voxel_size > 16:
                 k2 *= 2
-                self._down3 = Conv3DInceptionBlock(
+                self._down3 = block_class(
                     self._down2.out_channels, self._kernels, norm=self._norm,
                     activation=self._activation, residual=use_residual)
                 flat_size += self._down3.out_channels * 4
                 self._ss3 = SpatialSoftmax3D(
                     spatial_size, spatial_size, spatial_size,
                     self._down3.out_channels)
-                self._up3 = Conv3DInceptionBlockUpsampleBlock(
+                self._up3 = upsample_block_class(
                     self._kernels, self._kernels, 2, norm=self._norm,
                     activation=self._activation, residual=use_residual)
-            self._up2 = Conv3DInceptionBlockUpsampleBlock(
+            self._up2 = upsample_block_class(
                 k2, self._kernels, 2, norm=self._norm,
                 activation=self._activation, residual=use_residual)
 
         if self._dev_cfgs.get('cat_up1', False):
             k1 = k1 + self._encode_context_size if self._encode_context else k1 + self._inp_context_size
             
-        self._up1 = Conv3DInceptionBlockUpsampleBlock(
+        self._up1 = upsample_block_class(
             k1, self._kernels, 2, norm=self._norm,
             activation=self._activation, residual=use_residual)
 
@@ -367,7 +377,6 @@ class Qattention3DNetWithContext(Qattention3DNet):
             self._dense2 = DenseBlock(
                 self._dense_feats, self._out_dense, None, None)
  
-
     def forward(self, ins, proprio, prev_layer_voxel_grid, context):
         b, _, d, h, w = ins.shape
         if len(context.shape) == 1: # for acting
@@ -457,7 +466,6 @@ class Qattention3DNetWithContext(Qattention3DNet):
             f1_in = torch.cat([f1_in, repf1], dim=1)
             # print('forward Qnet : cated f1_in shape', f1_in.shape)
         f1 = self._final(f1_in)
-
         
         trans = self._final2(f1)
         # print('forward Qnet: trans shape', trans.shape) [b, 1, 16, 16, 16]
@@ -497,3 +505,23 @@ class Qattention3DNetWithContext(Qattention3DNet):
             })
         
         return trans, rot_and_grip_out, ctxt 
+
+
+
+if __name__ == '__main__':
+    qnet = Qattention3DNetWithContext(
+        in_channels=10,
+        out_channels=1,
+        voxel_size=16,
+        out_dense=0,
+        kernels=64,
+        norm=None, 
+        dense_feats=128,
+        activation='lrelu',
+        low_dim_size=10,
+        inp_context_size=20,
+        )
+    qnet.build(dev=False)
+    num_params = sum([p.numel() for p in qnet.parameters() if p.requires_grad])
+    print(num_params)
+    

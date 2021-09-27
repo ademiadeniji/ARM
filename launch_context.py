@@ -97,7 +97,6 @@ def run_seed(
     device, 
     seed, 
     all_tasks, # [stack_blocks, push_buttons,...]
-    all_variations, # [ [stack_blocks_0, stack_blocks_1,...], [push_buttons_0, push_buttons_1,...] ]
     train_demo_dataset,
     val_demo_dataset,
     ) -> None:
@@ -117,7 +116,7 @@ def run_seed(
                 cfg.method.voxel_sizes,
                 replay_size=cfg.replay.replay_size
                 )
-            for i, (one_task, its_variations) in enumerate(zip(all_tasks, all_variations)):
+            for i, (one_task, its_variations) in enumerate(zip(all_tasks, cfg.rlbench.use_variations)):
                 for task_var in its_variations:
                     var = int( task_var.split("_")[-1]) 
                     c2farm.launch_utils.fill_replay(
@@ -138,9 +137,9 @@ def run_seed(
             replays = [r]
         else:
             replays = []
-            cfg.replay.replay_size = int(cfg.replay.replay_size / sum([len(_vars) for _vars in all_variations]) )
+            cfg.replay.replay_size = int(cfg.replay.replay_size / sum([len(_vars) for _vars in cfg.rlbench.use_variations]) )
             logging.info(f'Splitting total replay size into each buffer: {cfg.replay.replay_size}')
-            for i, (one_task, its_variations) in enumerate(zip(all_tasks, all_variations)):
+            for i, (one_task, its_variations) in enumerate(zip(all_tasks, cfg.rlbench.use_variations)):
                 for task_var in its_variations:
                     var = int( task_var.split("_")[-1]) 
                     r = c2farm.launch_utils.create_replay(
@@ -180,7 +179,7 @@ def run_seed(
     logging.info('Creating Stat Accumulator: ')
     stat_accum = MultiTaskAccumulatorV2(
         task_names=cfg.tasks, 
-        tasks_vars=cfg.rlbench.all_variations,
+        tasks_vars=cfg.rlbench.use_variations,
         eval_video_fps=30,
         mean_only=True,
         max_len=5,
@@ -309,41 +308,52 @@ def main(cfg: DictConfig) -> None:
         cfg.rlbench.cameras, ListConfig) else [cfg.rlbench.cameras]
     obs_config = _create_obs_config(cfg.rlbench.cameras,
                                     cfg.rlbench.camera_resolution)
-
+    
+    if cfg.rlbench.num_vars > -1:
+        logging.info(f'Creating Env with only {cfg.rlbench.num_vars} variation and not sampling others!')
     env = CustomMultiTaskRLBenchEnv(
         task_classes=task_classes, task_names=tasks, observation_config=obs_config,
         action_mode=ACTION_MODE, dataset_root=cfg.rlbench.demo_path,
-        episode_length=cfg.rlbench.episode_length, headless=True)
+        episode_length=cfg.rlbench.episode_length, headless=True, 
+        use_variations=[j for j in range(cfg.rlbench.num_vars)] if cfg.rlbench.num_vars > -1 else [],
+        )
      
     all_tasks = []
-    var_count = 0 
+    var_count, use_vars_count = 0, 0
     all_variations = [] 
+    use_variations = []
     for name, tsk in zip(tasks, task_classes):
-        task = env.get_task(tsk)
+        task = env.get_task(tsk) 
         count = task.variation_count() 
+        use_count = cfg.rlbench.num_vars if cfg.rlbench.num_vars > -1 else count 
         all_tasks.append(name)
         var_count += count
+        use_vars_count += use_count 
         all_variations.append([ f"{name}_{c}" for c in range(count) ])
-        #print(name, tsk ,all_variations)
- 
-        logging.info(f"Task: {name}, using {count} variations")
+        use_variations.append([ f"{name}_{c}" for c in range(use_count) ])
+        #print(name, tsk ,all_variations) 
+        logging.info(f"Task: {name}, a total of {count} variations avaliable, using {use_count} of them")
+    
     # NOTE(Mandi) need to give a "blank" vanilla env so you don't get this error from env_runner.spinup_train_and_eval:
     # TypeError: can't pickle _thread.lock objects 
     env = CustomMultiTaskRLBenchEnv(
         task_classes=task_classes, task_names=tasks, observation_config=obs_config,
         action_mode=ACTION_MODE, dataset_root=cfg.rlbench.demo_path,
-        episode_length=cfg.rlbench.episode_length, headless=True)
+        episode_length=cfg.rlbench.episode_length, headless=True,
+        use_variations=[j for j in range(cfg.rlbench.num_vars)] if cfg.rlbench.num_vars > -1 else []
+        )
      
     cfg.rlbench.all_tasks = all_tasks
     cfg.rlbench.id_to_tasks = [(i, tsk) for i, tsk in enumerate(all_tasks)]
     cfg.rlbench.all_variations = all_variations
+    cfg.rlbench.use_variations = use_variations
     all_task_ids = [ i for i in range(len(all_tasks)) ]
 
     tasks_name = "-".join(cfg.tasks) + f"-{var_count}var"
     cfg.tasks_name = tasks_name
     logging.info(f"Using tasks: {tasks_name} and _all_ of their variations")
 
-    if not cfg.mt_only:
+    if not cfg.mt_only and cfg.rlbench.num_vars == -1 :
         # sanity check context dataset sampler
         if cfg.contexts.sampler.sample_mode == 'variation':
             assert cfg.contexts.sampler.batch_dim <= sum([len(l) for l in all_variations]) , \
@@ -395,8 +405,7 @@ def main(cfg: DictConfig) -> None:
             cfg.rlbench.cameras, 
             device, 
             seed, 
-            all_tasks,
-            all_variations,
+            all_tasks, 
             train_demo_dataset,
             val_demo_dataset,
             )

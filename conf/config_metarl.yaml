@@ -5,8 +5,9 @@ log_path: ???
 tasks_name: ???
 rlbench: 
     tasks: ${tasks}
-    all_tasks: ???      # [task_A, task_B,...]
-    all_variations: ??? # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
+    all_tasks: ???       # [task_A, task_B,...]
+    use_variations: ??? # [ [task_A_0], [task_B_0], ...
+    all_variations: ???  # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
     id_to_tasks: ???
     # variations: -1         # Actually it's useless to limit this, 
     demos: 3
@@ -16,30 +17,32 @@ rlbench:
     camera_resolution: [128, 128]
     scene_bounds: [-0.3, -0.5, 0.6, 0.7, 0.5, 1.6]
     max_fails: 5
+    single_variation: False 
+    num_vars: -1 
 
 replay:
     batch_size: 64 # total buff size, no task-aggregate anymore 
-    total_batch_size: ???
+    total_batch_size: 10000
     timesteps: 1
     prioritisation: True
     use_disk: False
     path: '/tmp/arm_sanity/replay'  # Only used when use_disk is True.
     share_across_tasks: True
     buffer_key: 'variation_id' # either var or task id, use this to look for buffers
-    replay_size: 200000 # total size 
+    replay_size: 100000 # total size 
 
 framework:
     log_freq:  100 # set to bigger to not save so many media files 
     save_freq: 100
-    train_envs: 3
-    eval_envs: 3
+    train_envs: 2
+    eval_envs: 1
     env_runner_gpu: 2
     replay_ratio: ${replay.batch_size}
     transitions_before_train: 100
     tensorboard_logging: True
     csv_logging: False
     wandb_logging: True
-    training_iterations: 10000
+    training_iterations: 30000
     gpu: 0
     logdir: '/home/mandi/ARM/log/'
     seeds: 1
@@ -62,11 +65,11 @@ dev:
     one_hot_size: 20   
     encode_context: False  # if one-hot, prolly ok not to encode
     qnet_context_latent_size: 16
-    cat_down1: 1
-    cat_down2: 1
-    cat_up1: 1
-    cat_up2: 1
-    cat_f1: 1
+    cat_down1: False
+    cat_down2: False
+    cat_up1: False 
+    cat_up2: False
+    cat_f1: False
     buffers_per_batch: 20
 
 contexts:
