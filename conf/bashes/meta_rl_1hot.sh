@@ -75,6 +75,18 @@ rlbench.demos=1  rlbench.demo_path=/shared/mandi/all_rlbench_data dev.cat_f1=Fal
 python launch_context.py tasks=['pick_up_cup']  rlbench.demos=10 dev.one_hot=True  \
     replay.batch_size=64 dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False \
     rlbench.num_vars=2 dev.conv3d=True 
+# txl1
+python launch_context.py tasks=['pick_up_cup']  rlbench.demos=10 dev.one_hot=True  \
+    replay.batch_size=256 dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False \
+    dev.conv3d=True run_name=Conv3d-OneHot-1Buffer 
+# ti1: batch 196 smaller lr 
+python launch_context.py tasks=['pick_up_cup']  rlbench.demos=10 dev.one_hot=True  \
+    replay.batch_size=196 dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False \
+    dev.conv3d=True run_name=Conv3d-OneHot-1Buffer-lr1e4 method.lr=1e-4
+# ti1: batch 128 cat twice + conv3d
+python launch_context.py tasks=['pick_up_cup']  rlbench.demos=10 dev.one_hot=True  \
+    replay.batch_size=128 dev.one_hot_size=20 dev.encode_context=False contexts.pass_down_context=False \
+    dev.conv3d=True run_name=Conv3d-CatTwice-OneHot-1Buffer dev.cat_up1=True
 
 
 # dev: single var + cat

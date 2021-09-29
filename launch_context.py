@@ -312,11 +312,16 @@ def main(cfg: DictConfig) -> None:
     if cfg.rlbench.num_vars > -1:
         cfg.dev.buffers_per_batch = cfg.rlbench.num_vars
         logging.info(f'Creating Env with only {cfg.rlbench.num_vars} variation and not sampling others!')
+    variation_idxs = [j for j in range(cfg.rlbench.num_vars)] if cfg.rlbench.num_vars > -1 else []
+    if len(cfg.dev.handpick) > 0:
+        logging.info('Hand-picking only variation ids: ', cfg.dev.handpick)
+        variation_idxs = cfg.dev.handpick
+
     env = CustomMultiTaskRLBenchEnv(
         task_classes=task_classes, task_names=tasks, observation_config=obs_config,
         action_mode=ACTION_MODE, dataset_root=cfg.rlbench.demo_path,
         episode_length=cfg.rlbench.episode_length, headless=True, 
-        use_variations=[j for j in range(cfg.rlbench.num_vars)] if cfg.rlbench.num_vars > -1 else [],
+        use_variations=variation_idxs,
         )
      
     all_tasks = []
@@ -331,17 +336,22 @@ def main(cfg: DictConfig) -> None:
         var_count += count
         use_vars_count += use_count 
         all_variations.append([ f"{name}_{c}" for c in range(count) ])
-        use_variations.append([ f"{name}_{c}" for c in range(use_count) ])
+        if len(cfg.dev.handpick) > 0:
+            use_variations.append([ f"{name}_{c}" for c in cfg.dev.handpick ])
+            logging.info('Hand-picked variation names: ', use_variations)
+        else:
+            use_variations.append([ f"{name}_{c}" for c in range(use_count) ])
         #print(name, tsk ,all_variations) 
         logging.info(f"Task: {name}, a total of {count} variations avaliable, using {use_count} of them")
-    
+     
     # NOTE(Mandi) need to give a "blank" vanilla env so you don't get this error from env_runner.spinup_train_and_eval:
     # TypeError: can't pickle _thread.lock objects 
+     
     env = CustomMultiTaskRLBenchEnv(
         task_classes=task_classes, task_names=tasks, observation_config=obs_config,
         action_mode=ACTION_MODE, dataset_root=cfg.rlbench.demo_path,
         episode_length=cfg.rlbench.episode_length, headless=True,
-        use_variations=[j for j in range(cfg.rlbench.num_vars)] if cfg.rlbench.num_vars > -1 else []
+        use_variations=variation_idxs
         )
      
     cfg.rlbench.all_tasks = all_tasks
