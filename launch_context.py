@@ -314,7 +314,8 @@ def main(cfg: DictConfig) -> None:
         logging.info(f'Creating Env with only {cfg.rlbench.num_vars} variation and not sampling others!')
     variation_idxs = [j for j in range(cfg.rlbench.num_vars)] if cfg.rlbench.num_vars > -1 else []
     if len(cfg.dev.handpick) > 0:
-        logging.info('Hand-picking only variation ids: ', cfg.dev.handpick)
+        logging.info('Hand-picking only variation ids: ')
+        print(cfg.dev.handpick)
         variation_idxs = cfg.dev.handpick
 
     env = CustomMultiTaskRLBenchEnv(
@@ -338,7 +339,8 @@ def main(cfg: DictConfig) -> None:
         all_variations.append([ f"{name}_{c}" for c in range(count) ])
         if len(cfg.dev.handpick) > 0:
             use_variations.append([ f"{name}_{c}" for c in cfg.dev.handpick ])
-            logging.info('Hand-picked variation names: ', use_variations)
+            logging.info('Hand-picked variation names: ') 
+            print(use_variations)
         else:
             use_variations.append([ f"{name}_{c}" for c in range(use_count) ])
         #print(name, tsk ,all_variations) 
