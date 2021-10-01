@@ -144,15 +144,20 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
         # raise ValueError
 
         priorities = 0
+        task_priorities, var_priorities = 0, 0 
         for qa in self._qattention_agents:
             #print('\n Updating qa layer: ', qa._layer)
             update_dict = qa.update(step, replay_sample)
             if self._pass_down_context:
                 assert 'prev_layer_encoded_context' in update_dict.keys(), 'Need previous layer to pass down encoded context'
             priorities += update_dict['priority']
+            task_priorities += update_dict['task_prio']
+            var_priorities += update_dict['var_prio']
             replay_sample.update(update_dict)
         return {
             'priority': (priorities) ** REPLAY_ALPHA,
+            'task_prio': task_priorities  ** REPLAY_ALPHA,
+            'var_prio': var_priorities  ** REPLAY_ALPHA,
         }
 
     def act(self, step: int, observation: dict,

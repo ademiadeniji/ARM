@@ -163,7 +163,7 @@ def run_seed(
                         )
                     replays.append(r)
                 print(f"Task id {i}: {one_task}, **created** and filled replay for {len(its_variations)} variations")
-            cfg.replay.total_batch_size = int(cfg.replay.batch_size * cfg.dev.buffers_per_batch)
+            cfg.replay.total_batch_size = int(cfg.replay.batch_size * cfg.replay.buffers_per_batch)
             replay_ratio = cfg.replay.total_batch_size
 
         if cfg.mt_only:
@@ -281,7 +281,8 @@ def run_seed(
         no_context=cfg.mt_only,
         one_hot=cfg.dev.one_hot,
         num_vars=num_all_vars,
-        buffers_per_batch=cfg.dev.buffers_per_batch,
+        buffers_per_batch=cfg.replay.buffers_per_batch,
+        update_buffer_prio=cfg.replay.update_buffer_prio
         )
  
     train_runner.start()
@@ -310,7 +311,7 @@ def main(cfg: DictConfig) -> None:
                                     cfg.rlbench.camera_resolution)
     
     if cfg.rlbench.num_vars > -1:
-        cfg.dev.buffers_per_batch = cfg.rlbench.num_vars
+        cfg.replay.buffers_per_batch = cfg.rlbench.num_vars
         logging.info(f'Creating Env with only {cfg.rlbench.num_vars} variation and not sampling others!')
     variation_idxs = [j for j in range(cfg.rlbench.num_vars)] if cfg.rlbench.num_vars > -1 else []
     if len(cfg.dev.handpick) > 0:

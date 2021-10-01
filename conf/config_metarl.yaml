@@ -30,9 +30,11 @@ replay:
     share_across_tasks: True
     buffer_key: 'variation_id' # either var or task id, use this to look for buffers
     replay_size: 100000 # total size 
+    update_buffer_prio: True 
+    buffers_per_batch: 20
 
 framework:
-    log_freq:  100 # set to bigger to not save so many media files 
+    log_freq:  200 # set to bigger to not save so many media files 
     save_freq: 100
     train_envs: 2
     eval_envs: 1
@@ -70,9 +72,8 @@ dev:
     cat_up1: False 
     cat_up2: False
     cat_f1: False
-    buffers_per_batch: 20
     conv3d: False 
-    handpick: [] # [0,3,4,6,7,10,11,16,18,19] 
+    handpick: [] # [0,3,4,6,7,10,11,16,18,19] or, [0,3,4,6,10] for red, green,blue,yellow,gray
     # exclude similar colors: red, green,blue,yellow,cyan,gray,orange,violet,black,white
 
 contexts:
