@@ -137,6 +137,7 @@ def run_seed(
             replays = [r]
         else:
             replays = []
+            var_to_replay_idx = dict()
             cfg.replay.replay_size = int(cfg.replay.replay_size / sum([len(_vars) for _vars in cfg.rlbench.use_variations]) )
             logging.info(f'Splitting total replay size into each buffer: {cfg.replay.replay_size}')
             for i, (one_task, its_variations) in enumerate(zip(all_tasks, cfg.rlbench.use_variations)):
@@ -161,8 +162,10 @@ def run_seed(
                         variation=var,
                         task_id=i,
                         )
+                    var_to_replay_idx[var] = len(replays)
                     replays.append(r)
                 print(f"Task id {i}: {one_task}, **created** and filled replay for {len(its_variations)} variations")
+                print('Created mapping from var ids to buffer ids:', var_to_replay_idx)
             cfg.replay.total_batch_size = int(cfg.replay.batch_size * cfg.replay.buffers_per_batch)
             replay_ratio = cfg.replay.total_batch_size
 
@@ -225,6 +228,7 @@ def run_seed(
         device_list=env_gpus,
         share_buffer_across_tasks=cfg.replay.share_across_tasks,
         buffer_key=cfg.replay.buffer_key,
+        var_to_replay_idx=var_to_replay_idx,
         )  
 
     if cfg.framework.wandb_logging:
