@@ -334,7 +334,7 @@ def create_agent_with_context(cfg: DictConfig, env,
 
     num_rotation_classes = int(360. // cfg.method.rotation_resolution)
     qattention_agents = []
-    ctxt_size = cfg.dev.one_hot_size if cfg.dev.one_hot else CONTEXT_SIZE
+    ctxt_size = sum([len(variations) for variations in cfg.rlbench.all_variations]) if cfg.dev.one_hot else CONTEXT_SIZE
     for depth, vox_size in enumerate(cfg.method.voxel_sizes):
         if depth == 0:
             unet3d = Qattention3DNetWithContext(
