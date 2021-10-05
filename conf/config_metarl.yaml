@@ -37,7 +37,7 @@ framework:
     log_freq:  200 # set to bigger to not save so many media files 
     save_freq: 100
     train_envs: 2
-    eval_envs: 1
+    eval_envs: 2
     env_runner_gpu: 2
     replay_ratio: ${replay.batch_size}
     transitions_before_train: 100
@@ -74,6 +74,7 @@ dev:
     conv3d: False 
     handpick: [] # [0,3,4,6,7,10,11,16,18,19] or, [0,3,4,6,10] for red, green,blue,yellow,gray
     # exclude similar colors: red, green,blue,yellow,cyan,gray,orange,violet,black,white
+    # exclude gray and white: [0,3,4,6,7,11,16,18]
 
 contexts:
   num_update_itrs: 5

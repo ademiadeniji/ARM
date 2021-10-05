@@ -116,9 +116,11 @@ def run_seed(
                 cfg.method.voxel_sizes,
                 replay_size=cfg.replay.replay_size
                 )
+            var_to_replay_idx = dict()
             for i, (one_task, its_variations) in enumerate(zip(all_tasks, cfg.rlbench.use_variations)):
                 for task_var in its_variations:
                     var = int( task_var.split("_")[-1]) 
+                    var_to_replay_idx[var] = 0
                     c2farm.launch_utils.fill_replay(
                         r, one_task, env, 
                         cfg.rlbench.demos,

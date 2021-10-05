@@ -2,8 +2,7 @@
 # try different replay setup for Easy-10:
 
 # debug 
- 
-
+  
     # 10x6  from 10 buffer
     python launch_context.py tasks=['pick_up_cup'] run_name=Easy-10Var-OneHot-CatFinal-10from10Buffer \
     contexts.update_freq=100000 framework.training_iterations=50000 dev.one_hot=True  dev.one_hot_size=10 dev.encode_context=False \
