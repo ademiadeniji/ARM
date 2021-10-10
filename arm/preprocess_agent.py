@@ -4,7 +4,8 @@ import torch
 
 from yarr.agents.agent import Agent, Summary, ActResult, \
     ScalarSummary, HistogramSummary, ImageSummary
-
+from einops import rearrange, reduce
+import logging
 
 class PreprocessAgent(Agent):
 
@@ -28,14 +29,15 @@ class PreprocessAgent(Agent):
         return (x.float() / 255.0) * 2.0 - 1.0
 
     def update(self, step: int, replay_sample: dict) -> dict:
-        # Samples are (B, N, ...) where N is number of buffers/tasks. This is a single task setup, so 0 index.
+        # Samples are (N, K, ...) where we sample N buffers for each batch and get K transitions from each buffer
         #for k, v in replay_sample.items():
             #print('preprocess agent update:', k, v.shape, v[:,0].shape )
         # replay_sample = {k: v[:, 0] for k, v in replay_sample.items()}
         for k, v in replay_sample.items():
             if 'rgb' in k:
                 replay_sample[k] = self._norm_rgb_(v)
-        self._replay_sample = replay_sample
+        # self._replay_sample = replay_sample
+        self._replay_sample = {k: rearrange(v, 'n k ... -> (n k) ...') for k, v in replay_sample.items()}
         pose_dict = self._pose_agent.update(step, replay_sample)
          
         return pose_dict
@@ -104,7 +106,9 @@ class PreprocessAgent(Agent):
         sums.extend(self._pose_agent.update_summaries())
         if self._context_agent is not None:
             sums.extend(self._context_agent.update_summaries())
-            
+        
+        # for s in sums:
+        #     print(s.name, s.value.shape, type(s))
         return sums
 
     def act_summaries(self) -> List[Summary]: 

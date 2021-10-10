@@ -54,7 +54,7 @@ from torch.multiprocessing import Lock, cpu_count
 ACTION_MODE = ActionMode(
         ArmActionMode.ABS_EE_POSE_PLAN_WORLD_FRAME,
         GripperActionMode.OPEN_AMOUNT)
-LOG_CONFIG_KEYS = ['rlbench', 'replay', 'framework', 'contexts', 'dataset']
+LOG_CONFIG_KEYS = ['rlbench', 'replay', 'framework', 'contexts', 'dataset', 'method', 'dev']
 LATEST_MT = [
     'pick_up_cup',
     'phone_on_base',
@@ -73,6 +73,7 @@ LATEST_MT = [
     'close_drawer',
 ]
 def make_loader(cfg, mode, dataset):
+    """ Not used lately """
     variation_idxs, task_idxs = dataset.get_idxs()
     sampler = MultiTaskDemoSampler(
         variation_idxs_list=variation_idxs, # 1-1 maps from each variation to idx in dataset e.g. [[0,1], [2,3], [4,5]] belongs to 3 variations but 2 tasks
@@ -100,8 +101,7 @@ def run_seed(
     train_demo_dataset,
     val_demo_dataset,
     ) -> None:
-    replay_ratio = None if cfg.framework.replay_ratio == 'None' else cfg.framework.replay_ratio
-    replay_split = [1]
+    replay_ratio = cfg.framework.get("replay_ratio", None)
     replay_path = join(cfg.replay.path, cfg.tasks_name, cfg.method.name, 'seed%d' % seed)
     action_min_max = None
 
@@ -267,7 +267,7 @@ def run_seed(
         agent, env_runner,
         wrapped_replays, 
         device, 
-        replay_split, stat_accum,
+        stat_accum,
         iterations=cfg.framework.training_iterations,
         save_freq=cfg.framework.save_freq, 
         log_freq=cfg.framework.log_freq, 
@@ -277,9 +277,7 @@ def run_seed(
         transitions_before_train=cfg.framework.transitions_before_train,
         tensorboard_logging=cfg.framework.tensorboard_logging,
         csv_logging=cfg.framework.csv_logging,
-        context_cfg=cfg.contexts,
-        # ctxt_train_loader=ctxt_train_loader,
-        # ctxt_val_loader=ctxt_val_loader,
+        context_cfg=cfg.contexts, 
         train_demo_dataset=train_demo_dataset,
         val_demo_dataset=val_demo_dataset,
         wandb_logging=cfg.framework.wandb_logging,
@@ -288,7 +286,8 @@ def run_seed(
         one_hot=cfg.dev.one_hot,
         num_vars=num_all_vars,
         buffers_per_batch=cfg.replay.buffers_per_batch,
-        update_buffer_prio=cfg.replay.update_buffer_prio
+        update_buffer_prio=cfg.replay.update_buffer_prio,
+        offline=cfg.dev.offline,
         )
  
     train_runner.start()
@@ -316,8 +315,7 @@ def main(cfg: DictConfig) -> None:
     obs_config = _create_obs_config(cfg.rlbench.cameras,
                                     cfg.rlbench.camera_resolution)
     
-    if cfg.rlbench.num_vars > -1:
-        cfg.replay.buffers_per_batch = cfg.rlbench.num_vars
+    if cfg.rlbench.num_vars > -1: 
         logging.info(f'Creating Env with only {cfg.rlbench.num_vars} variation and not sampling others!')
     variation_idxs = [j for j in range(cfg.rlbench.num_vars)] if cfg.rlbench.num_vars > -1 else []
     if len(cfg.dev.handpick) > 0:
@@ -384,14 +382,17 @@ def main(cfg: DictConfig) -> None:
         
 
     cwd = os.getcwd()
-    cfg.run_name = cfg.run_name + f"Batch{cfg.replay.batch_size}-Demo{cfg.rlbench.demos}-Before{cfg.framework.transitions_before_train}"
+
+    cfg.run_name = cfg.run_name + f"-Replay_B{cfg.replay.batch_size}x{1 if cfg.replay.share_across_tasks else cfg.replay.buffers_per_batch}"
     if cfg.mt_only or cfg.dev.one_hot :
         logging.info('Use MT-policy or One-hot context, no context embedding, setting EnvRunner visible GPUs to 1')
-        cfg.run_name += 'NoContext' 
+        cfg.run_name += '-NoContext' 
         cfg.framework.env_runner_gpu = 1 
+    elif cfg.contexts.update_freq > cfg.framework.training_iterations:
+        logging.info('Warning! Not updating context agent with context batch, hinge loss calculated from replay batch only.')
     else:
-        cfg.run_name +=  f"Context-step{cfg.dataset.num_steps_per_episode}-freq{cfg.contexts.update_freq}-" + \
-                        f"iter{cfg.contexts.num_update_itrs}-embed{cfg.contexts.agent.embedding_size}" 
+        cfg.run_name +=  f"-Ctxt_B{cfg.contexts.sampler.batch_dim}_freq{cfg.contexts.update_freq}_" + \
+                        f"iter{cfg.contexts.num_update_itrs}_embed{cfg.contexts.agent.embedding_size*4}" 
     
     log_path = join(cwd, tasks_name, cfg.run_name)
     os.makedirs(log_path, exist_ok=True) 

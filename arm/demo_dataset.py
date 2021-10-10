@@ -172,7 +172,7 @@ class RLBenchDemoDataset(Dataset):
             
             self._task_idx_list.append(all_variation_idxs)
             self._task_variation_tree.append(listed_var_idxs)
-            print('dataset got idxs:', self._task_variation_tree)
+            # print('dataset got idxs:', self._task_variation_tree)
         
         self.total_count = len(self._all_file_names)
         
@@ -295,7 +295,7 @@ class RLBenchDemoDataset(Dataset):
         aval_steps = len(obs) 
             
         if self._num_steps == 2:
-            take_steps = [0, aval_steps-1]
+            take_steps = list(np.random.choice(range(0, aval_steps-1), 1) ) + [aval_steps-1]
         elif self._num_steps == 1:
             take_steps = [aval_steps-1]
         else:

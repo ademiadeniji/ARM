@@ -15,6 +15,7 @@ from arm.c2farm.qattention_agent_with_context import QAttentionContextAgent
 
 from yarr.agents.agent import Agent, ActResult, ScalarSummary, \
     HistogramSummary, ImageSummary, Summary
+from einops import rearrange, reduce 
 
 NAME = 'QAttentionStackAgent'
 GAMMA = 0.99
@@ -138,10 +139,18 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
         self._device = device 
     
     def update(self, step: int, replay_sample: dict) -> dict:
-        """NOTE(mandi): we may need to 'pass down' the encoded context embedding from 
+        """NOTE(mandi): 
+            - let context agent act here once, so it optionally first does a pass to update hinge loss 
+            - we may need to 'pass down' the encoded context embedding from 
             one layer to another"""
         # utils.visualize_batch(replay_sample, filename='/home/mandi/ARM/debug/one_batch', img_size=128)
         # raise ValueError
+        act_result = self._context_agent.act_for_replay(step, replay_sample)
+        replay_sample['prev_layer_encoded_context'] = act_result.action
+        replay_sample['emb_loss'] = act_result.info.get('emb_loss', 0)
+
+        # Samples are (N, K, ...) where we sample N buffers for each batch and get K transitions from each buffer
+        replay_sample = {k: rearrange(v, 'b k ... -> (b k) ... ') for k, v in replay_sample.items()}
 
         priorities = 0
         task_priorities, var_priorities = 0, 0 

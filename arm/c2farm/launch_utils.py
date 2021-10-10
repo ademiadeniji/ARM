@@ -30,7 +30,7 @@ from torch.utils.data import DataLoader
 REWARD_SCALE = 100.0
 TASK_ID='task_id'
 VAR_ID='variation_id'
-CONTEXT_SIZE=128
+CONTEXT_SIZE=64
 
 
 def create_replay(batch_size: int, timesteps: int, prioritisation: bool,
@@ -381,6 +381,7 @@ def create_agent_with_context(cfg: DictConfig, env,
             image_crop_size=cfg.method.image_crop_size,
             tau=cfg.method.tau,
             lr=cfg.method.lr,
+            emb_lr=cfg.method.emb_lr,
             lambda_trans_qreg=cfg.method.lambda_trans_qreg,
             lambda_rot_qreg=cfg.method.lambda_rot_qreg,
             include_low_dim_state=True,

@@ -118,6 +118,7 @@ class QAttentionContextAgent(Agent):
                  gamma: float = 0.99,
                  nstep: int = 1,
                  lr: float = 0.0001,
+                 emb_lr: float = 0.0001, 
                  lambda_trans_qreg: float = 1e-6,
                  lambda_rot_qreg: float = 1e-6,
                  grad_clip: float = 20.,
@@ -140,6 +141,7 @@ class QAttentionContextAgent(Agent):
         self._gamma = gamma
         self._nstep = nstep
         self._lr = lr
+        self._emb_lr = emb_lr # use a separate lr for embedder net 
         self._grad_clip = grad_clip
         self._include_low_dim_state = include_low_dim_state
         self._image_resolution = image_resolution or [128, 128]
@@ -187,8 +189,10 @@ class QAttentionContextAgent(Agent):
             utils.soft_updates(self._q, self._q_target, 1.0)
             q_params = self._q.parameters()
             emb_params = self._context_agent._optim_params
-            if self._update_context_agent:
-                q_params = [{"params": q_params}] + emb_params
+            for e in emb_params:
+                e.update({'lr': self._emb_lr})
+            # if self._update_context_agent: # NOTE: always add params here, doesn't have to affect 
+            q_params = [{"params": q_params, 'lr': self._lr}] + emb_params
             self._optimizer = torch.optim.Adam(
                 q_params, lr=self._lr,
                 weight_decay=self._lambda_weight_l2)
@@ -293,12 +297,19 @@ class QAttentionContextAgent(Agent):
     def update(self, step: int, replay_sample: dict) -> dict:
         #context_sample = self._preprocess_context_inputs(replay_sample)
         # each layer Might be also update context embedder's params via here 
-        if self._layer > 0 and self._pass_down_context:
-            context = replay_sample['prev_layer_encoded_context'].detach()
+        # if self._layer > 0 and self._pass_down_context:
+        #     context = replay_sample['prev_layer_encoded_context'].detach()
              
-        else:
-            context = self._context_agent.act_for_replay(step, replay_sample).action.to(self._device) 
-        
+        # else:
+        #     context = self._context_agent.act_for_replay(step, replay_sample).action.to(self._device) 
+        # NOTE(new 10/08): stacker agent handle act_for_replay now 
+        # still, later layers cannot update context embeder
+        context = replay_sample['prev_layer_encoded_context'].to(self._device) 
+        emb_loss = replay_sample.get('emb_loss', 0).to(self._device) 
+        if self._layer > 0:
+            context = context.detach()
+        elif not self._update_context_agent:
+            context = context.detach() # NOTE: this means only emb_loss affects embnet params, no td error 
         action_trans = replay_sample['trans_action_indicies'][:, -1,
                        self._layer * 3:self._layer * 3 + 3]
         action_rot_grip = replay_sample['rot_grip_action_indicies'][:, -1].long()
@@ -373,7 +384,11 @@ class QAttentionContextAgent(Agent):
 
         loss_weights = utils.loss_weights(replay_sample, REPLAY_BETA)
         combined_delta = q_delta.mean(1)
-        total_loss = ((combined_delta + qreg_loss) * loss_weights).mean()
+        total_loss = combined_delta + qreg_loss 
+        
+        total_loss = (total_loss * loss_weights).mean()
+        if self._layer == 0: 
+            total_loss += (emb_loss).mean()
 
         self._optimizer.zero_grad()
         total_loss.backward()
@@ -391,7 +406,7 @@ class QAttentionContextAgent(Agent):
             self._summaries.update({
                 'q/mean_q_rotation': q_rot_grip.mean(),
                 'q/max_q_rotation': target_q_rot_grip[:, :3].mean(),
-                'losses/bellman_rotation': q_delta[:, :3].mean(),
+                'losses/bellman_rotation':    q_delta[:, :3].mean(),
                 'losses/bellman_qattention': q_delta[:, -1:].mean(),
             })
         else:
@@ -400,7 +415,7 @@ class QAttentionContextAgent(Agent):
             })
 
         self._vis_voxel_grid = voxel_grid[0]
-        self._vis_translation_qvalue = q[0]
+        self._vis_translation_qvalue =  q[0]
         self._vis_max_coordinate = coords[0]
 
         utils.soft_updates(self._q, self._q_target, self._tau)
@@ -428,7 +443,7 @@ class QAttentionContextAgent(Agent):
             'var_prio': var_prio,
             'prev_layer_voxel_grid': voxel_grid,
             'prev_layer_voxel_grid_tp1': voxel_grid_tp1,
-            'prev_layer_encoded_context': encoded_context,
+            'prev_layer_encoded_context': encoded_context if self._pass_down_context else context,
         }
 
     def act(self, step: int, context_res: ActResult, observation: dict,

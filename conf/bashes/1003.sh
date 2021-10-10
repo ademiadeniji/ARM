@@ -38,6 +38,14 @@
     rlbench.demos=10 contexts.pass_down_context=True  rlbench.demo_path=/home/mandi/custom_rlbench_data \
     replay.share_across_tasks=True replay.batch_size=64 dev.handpick=[0,1,2,3,4,7,8,9]
 
+     python launch_context.py tasks=['pick_up_cup'] run_name=Easy-8Var-8from8 \
+     contexts.update_freq=100000 framework.training_iterations=50000 dev.one_hot=True dev.encode_context=False \
+    rlbench.demos=10 contexts.pass_down_context=True  rlbench.demo_path=/home/mandi/custom_rlbench_data \
+    replay.share_across_tasks=False replay.batch_size=128 dev.handpick=[0,1,2,3,4,7,8,9] \
+    replay.batch_size=8 replay.buffers_per_batch=8
+
+
+
     python launch_context.py tasks=['pick_up_cup'] run_name=Easy-8Var-1Buffer \
      contexts.update_freq=100000 framework.training_iterations=50000 dev.one_hot=True dev.encode_context=False \
     rlbench.demos=10 contexts.pass_down_context=True  rlbench.demo_path=/home/mandi/custom_rlbench_data \
@@ -46,6 +54,14 @@
 
 
 # ti5: 
+     RUN=Handpick-8Var-OneHot-8from8
+     python launch_context.py tasks=['pick_up_cup']  rlbench.demos=10 dev.one_hot=True     \
+        replay.batch_size=15 replay.buffers_per_batch=8  replay.share_across_tasks=False \
+        dev.handpick=[0,3,4,6,7,11,16,18] \
+        dev.encode_context=False contexts.pass_down_context=False \
+        run_name=${RUN} \
+        rlbench.demo_path=/home/mandi/front_rlbench_data  
+
     # handpick 8: add prio 
     RUN=Handpick-8Var-OneHot-PRIO-5from10
     python launch_context.py tasks=['pick_up_cup']  rlbench.demos=10 dev.one_hot=True     \

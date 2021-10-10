@@ -12,6 +12,7 @@ from arm.models.utils import make_optimizer # tie the optimizer definition close
 from arm import utils
 from omegaconf import DictConfig
 from einops import rearrange, reduce, repeat, parse_shape
+import logging
 
 NAME = 'ContextEmbedderAgent'
 CONTEXT_KEY = 'demo_sample'
@@ -61,8 +62,7 @@ class ContextAgent(Agent):
                  with_action_context: bool,
                  is_train: bool,
                  # for traintime:
-                 embedding_size: int, 
-                 num_support: int, # for TecNet
+                 embedding_size: int,  
                  num_query: int,   
                  margin: float = 0.1,
                  emb_lambda: float = 1.0,
@@ -71,6 +71,8 @@ class ContextAgent(Agent):
                  prod_of_gaus_factors_over_batch: bool = False, # for PEARL 
                  encoder_cfg: DictConfig = None,
                  one_hot: bool = False,
+                 replay_update: bool = False,  
+                 num_samples: int = 2,
                  ):
         self._embedding_net = embedding_net
         self._encoder_cfg = encoder_cfg
@@ -84,9 +86,11 @@ class ContextAgent(Agent):
         self._current_context = None
         self._loss_mode = loss_mode
 
-        #   TecNet:
-        self._num_support = num_support
+        self._num_samples = num_samples  # dim K
+        #   TecNet: 
         self._num_query = num_query
+        assert num_query < num_samples, f"Cannot get {num_query} queries with just {num_samples} samples"
+        self._num_support = num_samples - num_query 
         self._margin = margin
         self._emb_lambda = emb_lambda
         #   PEARL
@@ -96,6 +100,11 @@ class ContextAgent(Agent):
         self._val_loss = None 
         self._val_embedding_accuracy = None 
         self._one_hot = one_hot 
+        self._replay_update = replay_update
+        self._replay_summaries, self._context_summaries = {}, {}
+        
+        logging.info(f'Creating context agent that takes {num_samples} \
+            samples per replay buffer, and first {num_query} samples as query')
 
     def build(self, training: bool, device: torch.device = None):
         """Train and Test time use the same build() """
@@ -116,11 +125,28 @@ class ContextAgent(Agent):
         data = replay_sample[CONTEXT_KEY].to(self._device)
         if self._one_hot:
             return ActResult(data) 
+        # NOTE(10/08) now replay sample is also shape (bsize, num_samples, vid_len, 3, 128, 128) 
         # note shape here is (bsize, video_len, 3, 128, 128), preprocess_agent squeezed the task dimension 
-        b, n, ch, img_h, img_w = data.shape
-        model_inp = rearrange(data, 'b n ch h w -> b ch n h w')
+        b, k, n, ch, img_h, img_w = data.shape
+        model_inp = rearrange(data, 'b k n ch h w -> (b k) ch n h w')
         embeddings = self._embedding_net(model_inp) # shape (b, embed_dim)
-        return ActResult(embeddings)
+        embeddings = rearrange(embeddings, '(b k) d -> b k d', b=b, k=k)
+        if self._replay_update:
+            
+            # self._optimizer.zero_grad()
+            if self._loss_mode == 'hinge':
+                update_dict = self._compute_hinge_loss(embeddings, val=False)
+                self._replay_summaries = {
+                    'replay_batch/'+k: torch.mean(v) for k,v in update_dict.items()}
+                return ActResult(embeddings, info={'emb_loss': update_dict['emb_loss']})
+            else:
+                raise NotImplementedError
+            # loss = update_dict['emb_loss']
+            # loss.backward(retain_graph=True)
+            # self._optimizer.step()
+
+        ActResult(embeddings, info={})
+        
 
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:
@@ -214,6 +240,8 @@ class ContextAgent(Agent):
         if val:
             if self._loss_mode == 'hinge':
                 update_dict = self._compute_hinge_loss(embeddings, val=val)
+                self._context_summaries.update({
+                    "context_batch/val/"+k: torch.mean(v) for k,v in update_dict.items()})
             else:
                 raise NotImplementedError
             return update_dict
@@ -221,9 +249,11 @@ class ContextAgent(Agent):
         self._optimizer.zero_grad()
         if self._loss_mode == 'hinge':
             update_dict = self._compute_hinge_loss(embeddings, val=val)
+            self._context_summaries.update({
+                "context_batch/train/"+k: torch.mean(v) for k,v in update_dict.items()})
         else:
             raise NotImplementedError
-        loss = update_dict['emb_loss']
+        loss = update_dict['mean_emb_loss']
         loss.backward()
         self._optimizer.step()
 
@@ -232,8 +262,112 @@ class ContextAgent(Agent):
     def validate_context(self, step, context_batch):
         with torch.no_grad():
             val_dict = self.update(step, context_batch, val=True)
-        return val_dict
+        return val_dict 
+
+    def _compute_kl_loss(self, mu, sigma_sqrd):
+        # ref: https://github.com/katerakelly/oyster/blob/cd09c1ae0e69537ca83004ca569574ea80cf3b9c/rlkit/torch/sac/agent.py#L117
+        guassian_prior = torch.distributions.Normal(
+            torch.zeros_like(mu), torch.ones_like(sigma_sqrd))
+        # ref: https://github.com/katerakelly/oyster/blob/cd09c1ae0e69537ca83004ca569574ea80cf3b9c/rlkit/torch/sac/agent.py#L116
+        posterior = torch.distributions.Normal(mu, torch.sqrt(sigma_sqrd))
+        self._loss = torch.distributions.kl.kl_divergence(posterior, guassian_prior).mean()
+        # ToDo: add more informative accuracy measure
+        self._embedding_accuracy = 0
+
+        return {
+            'context': torch.cat((mu, sigma_sqrd), -1).mean(1),
+            'mean_emb_loss': self._loss
+        }
+
+    def _compute_hinge_loss(self, embeddings, val=False): 
+        b, k, d = embeddings.shape 
+        embeddings_norm = embeddings / embeddings.norm(dim=2, p=2, keepdim=True)
+
+        num_query = 1 if val else self._num_query # ugly hack cuz not enough validation data 
+        num_support = 1 if val else self._num_support 
  
+        # support_embeddings = embeddings_norm[:, num_support:]
+        # query_embeddings = embeddings_norm[:, :num_query].reshape(b * num_query, -1) 
+        query_embeddings, support_embeddings = embeddings_norm.split([num_query, num_support], dim=1)
+        query_embeddings = query_embeddings.reshape(b * num_query, -1) 
+        # norm query too?
+        # print('context agent embedding size and val?: ', embeddings_norm.shape, val )
+        support_context = support_embeddings.mean(1)  # (B, E)
+        support_context = support_context / support_context.norm(
+            dim=1, p=2, keepdim=True)
+        similarities = support_context.matmul(query_embeddings.transpose(0, 1))
+        similarities = similarities.view(b, b, num_query)  # (B, B, queries)
+
+        # Gets the diagonal to give (batch, query)
+        diag = torch.eye(b, device=self._device)
+        positives = torch.masked_select(similarities, diag.unsqueeze(-1).bool())  # (B * query)
+        positives = positives.view(b, 1, num_query)  # (B, 1, query)
+
+        negatives = torch.masked_select(similarities, diag.unsqueeze(-1) == 0)
+        # (batch, batch-1, query)
+        negatives = negatives.view(b, b - 1, -1)
+
+        loss = torch.max(self._zero, self._margin - positives + negatives)
+        if val:
+            self._val_loss = loss.mean() * self._emb_lambda
+        else:
+            self._loss = loss.mean() * self._emb_lambda
+
+        # Summaries
+        max_of_negs = negatives.max(1)[0]  # (batch, query)
+        accuracy = positives[:, 0] > max_of_negs
+        if val:
+            self._val_embedding_accuracy = accuracy.float().mean() 
+        else:
+            self._embedding_accuracy = accuracy.float().mean()
+
+        return {
+            # 'context': support_context,
+            'emb_loss': loss * self._emb_lambda,
+            'mean_emb_loss': loss.mean() * self._emb_lambda,
+            'emd_acc': accuracy.float().mean(), 
+        }
+
+    def update_train_summaries(self) -> List[Summary]:
+        summaries = []
+        if self._one_hot:
+            return summaries
+
+        prefix = 'ContextAgent'
+        if self._replay_summaries is not None:
+            summaries.extend([
+                ScalarSummary(f'{prefix}/{key}', v) for key, v in self._replay_summaries.items()
+                ])
+        if self._context_summaries is not None:
+            summaries.extend([
+                ScalarSummary(f'{prefix}/{key}', v) for key, v in self._context_summaries.items()
+                ])
+
+        # if self._current_context is None:
+        #     prefix = 'context/train'
+        #     summaries.extend([
+        #         ScalarSummary('%s_loss' % prefix, self._loss),
+        #         ScalarSummary('%s_accuracy' % prefix, self._embedding_accuracy),
+        #         ScalarSummary('%s_mean_embedding' % prefix, self._mean_embedding),
+        #     ])
+        #     if self._val_embedding_accuracy is not None:
+        #         prefix = 'context/val'
+        #         summaries.extend([
+        #         ScalarSummary('%s_loss' % prefix, self._val_loss),
+        #         ScalarSummary('%s_accuracy' % prefix, self._val_embedding_accuracy)
+        #         ])
+            # not logging parameters yet 
+            # for tag, param in self._embedding_net.named_parameters():
+            #     assert not torch.isnan(param.grad.abs() <= 1.0).all()
+            #     summaries.append(
+            #         HistogramSummary('%s/gradient/%s' % (prefix, tag), param.grad))
+            #     summaries.append(
+            #         HistogramSummary('%s/weight/%s' % (prefix, tag), param.data))
+        return summaries
+    
+    def update_test_summaries(self) -> List[Summary]:
+        return []
+
     # def train_update(self, step: int, replay_sample: dict) -> dict: 
     #     if self._current_context is not None:
     #         b = replay_sample['action'].shape[0]
@@ -276,90 +410,3 @@ class ContextAgent(Agent):
     #         return self._compute_kl_loss(mu, sigma_sqrd)
     #     else:
     #         raise Exception('Invalid loss mode, must be one of [ hinge | kl ], but found {}'.format(self._loss_mode))
-
-    def _compute_kl_loss(self, mu, sigma_sqrd):
-        # ref: https://github.com/katerakelly/oyster/blob/cd09c1ae0e69537ca83004ca569574ea80cf3b9c/rlkit/torch/sac/agent.py#L117
-        guassian_prior = torch.distributions.Normal(
-            torch.zeros_like(mu), torch.ones_like(sigma_sqrd))
-        # ref: https://github.com/katerakelly/oyster/blob/cd09c1ae0e69537ca83004ca569574ea80cf3b9c/rlkit/torch/sac/agent.py#L116
-        posterior = torch.distributions.Normal(mu, torch.sqrt(sigma_sqrd))
-        self._loss = torch.distributions.kl.kl_divergence(posterior, guassian_prior).mean()
-        # ToDo: add more informative accuracy measure
-        self._embedding_accuracy = 0
-
-        return {
-            'context': torch.cat((mu, sigma_sqrd), -1).mean(1),
-            'emb_loss': self._loss
-        }
-
-    def _compute_hinge_loss(self, embeddings, val=False): 
-        b, k, d = embeddings.shape 
-        embeddings_norm = embeddings / embeddings.norm(dim=2, p=2, keepdim=True)
-
-        support_embeddings = embeddings_norm[:, :self._num_support]
-        query_embeddings = embeddings_norm[:, -self._num_query:].reshape(
-            b * self._num_query, -1) 
-
-        support_context = support_embeddings.mean(1)  # (B, E)
-        support_context = support_context / support_context.norm(
-            dim=1, p=2, keepdim=True)
-        similarities = support_context.matmul(query_embeddings.transpose(0, 1))
-        similarities = similarities.view(b, b, self._num_query)  # (B, B, queries)
-
-        # Gets the diagonal to give (batch, query)
-        diag = torch.eye(b, device=self._device)
-        positives = torch.masked_select(similarities, diag.unsqueeze(-1).bool())  # (B * query)
-        positives = positives.view(b, 1, self._num_query)  # (B, 1, query)
-
-        negatives = torch.masked_select(similarities, diag.unsqueeze(-1) == 0)
-        # (batch, batch-1, query)
-        negatives = negatives.view(b, b - 1, -1)
-
-        loss = torch.max(self._zero, self._margin - positives + negatives)
-        if val:
-            self._val_loss = loss.mean() * self._emb_lambda
-        else:
-            self._loss = loss.mean() * self._emb_lambda
-
-        # Summaries
-        max_of_negs = negatives.max(1)[0]  # (batch, query)
-        accuracy = positives[:, 0] > max_of_negs
-        if val:
-            self._val_embedding_accuracy = accuracy.float().mean() 
-        else:
-            self._embedding_accuracy = accuracy.float().mean()
-
-        return {
-            'context': support_context,
-            'emb_loss': loss.mean() * self._emb_lambda,
-            'emd_acc': accuracy.float().mean(), 
-        }
-
-    def update_train_summaries(self) -> List[Summary]:
-        summaries = []
-        if self._one_hot:
-            return summaries
-        if self._current_context is None:
-            prefix = 'context/train'
-            summaries.extend([
-                ScalarSummary('%s_loss' % prefix, self._loss),
-                ScalarSummary('%s_accuracy' % prefix, self._embedding_accuracy),
-                ScalarSummary('%s_mean_embedding' % prefix, self._mean_embedding),
-            ])
-            if self._val_embedding_accuracy is not None:
-                prefix = 'context/val'
-                summaries.extend([
-                ScalarSummary('%s_loss' % prefix, self._val_loss),
-                ScalarSummary('%s_accuracy' % prefix, self._val_embedding_accuracy)
-                ])
-            # not logging parameters yet 
-            # for tag, param in self._embedding_net.named_parameters():
-            #     assert not torch.isnan(param.grad.abs() <= 1.0).all()
-            #     summaries.append(
-            #         HistogramSummary('%s/gradient/%s' % (prefix, tag), param.grad))
-            #     summaries.append(
-            #         HistogramSummary('%s/weight/%s' % (prefix, tag), param.data))
-        return summaries
-    
-    def update_test_summaries(self) -> List[Summary]:
-        return []

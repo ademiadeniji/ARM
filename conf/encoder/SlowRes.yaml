@@ -12,7 +12,7 @@ RESNET:
   SPATIAL_DILATIONS:     [[1], [1], [1], [1]]
 MODEL:
   ARCH:         "slow"
-  OUT_DIM:      32 # used to be NUM_CLASSES = 400
+  OUT_DIM:      16 # used to be NUM_CLASSES = 400
   DROPOUT_RATE: 0.5
   FC_INIT_STD:  0.01
   HEAD_ACT:     "softmax"

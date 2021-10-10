@@ -10,7 +10,7 @@ rlbench:
     all_variations: ???  # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
     id_to_tasks: ???
     # variations: -1         # Actually it's useless to limit this, 
-    demos: 3
+    demos: 10
     demo_path: /home/mandi/all_rlbench_data
     episode_length: 10
     cameras: [front]
@@ -27,7 +27,7 @@ replay:
     prioritisation: True
     use_disk: False
     path: '/tmp/arm_sanity/replay'  # Only used when use_disk is True.
-    share_across_tasks: True
+    share_across_tasks: False 
     buffer_key: 'variation_id' # either var or task id, use this to look for buffers
     replay_size: 100000 # total size 
     update_buffer_prio: True 
@@ -37,14 +37,14 @@ framework:
     log_freq:  200 # set to bigger to not save so many media files 
     save_freq: 100
     train_envs: 2
-    eval_envs: 2
+    eval_envs: 1
     env_runner_gpu: 2
     replay_ratio: ${replay.batch_size}
     transitions_before_train: 100
     tensorboard_logging: True
     csv_logging: False
     wandb_logging: True
-    training_iterations: 30000
+    training_iterations: 5000
     gpu: 0
     logdir: '/home/mandi/ARM/log/'
     seeds: 1
@@ -75,6 +75,7 @@ dev:
     handpick: [] # [0,3,4,6,7,10,11,16,18,19] or, [0,3,4,6,10] for red, green,blue,yellow,gray
     # exclude similar colors: red, green,blue,yellow,cyan,gray,orange,violet,black,white
     # exclude gray and white: [0,3,4,6,7,11,16,18]
+    offline: False 
 
 contexts:
   num_update_itrs: 5
@@ -85,18 +86,19 @@ contexts:
   agent:
     with_action_context: False
     is_train: True
-    embedding_size: 32 
-    num_support: 2  #for TecNet
-    num_query:  1
-    margin:     2.0
+    embedding_size: 16
+    num_query:  2 
+    num_samples: ${replay.batch_size}
+    margin:     0.5
     emb_lambda: 1.0
     save_context: False 
     loss_mode:  'hinge' 
     prod_of_gaus_factors_over_batch: False # for PEARL 
     encoder_cfg: ${encoder}
+    replay_update: False 
   sampler:
     batch_dim:             10    # dimension 'B'
-    samples_per_variation: 3      # dimension 'N' 
+    samples_per_variation: ${replay.batch_size}      # dimension 'N' 
     drop_last:             True 
     sample_mode:           'variation' # or 'variation'
     val_batch_dim:             20      # actually let's fix this for all sweeping runs to get a fair comparision 
