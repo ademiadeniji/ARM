@@ -128,6 +128,7 @@ class QAttentionContextAgent(Agent):
                  context_agent: Agent = None, 
                  update_context_agent: bool = True,
                  pass_down_context: bool = True,
+                 use_emb_loss: bool = True, 
                  ):
         self._layer = layer
         self._lambda_trans_qreg = lambda_trans_qreg
@@ -160,10 +161,12 @@ class QAttentionContextAgent(Agent):
         self._context_agent = context_agent
         self._update_context_agent = update_context_agent
         self._pass_down_context = pass_down_context
+        self._use_emb_loss = use_emb_loss
 
     def build(self, training: bool, device: torch.device = None):
         if device is None:
             device = torch.device('cpu')
+            logging.info('Warning: agent is not on GPU')
 
         vox_grid = VoxelGrid(
             coord_bounds=self._coordinate_bounds,
@@ -306,6 +309,7 @@ class QAttentionContextAgent(Agent):
         # still, later layers cannot update context embeder
         context = replay_sample['prev_layer_encoded_context'].to(self._device) 
         emb_loss = replay_sample.get('emb_loss', 0).to(self._device) 
+        
         if self._layer > 0:
             context = context.detach()
         elif not self._update_context_agent:
@@ -387,7 +391,7 @@ class QAttentionContextAgent(Agent):
         total_loss = combined_delta + qreg_loss 
         
         total_loss = (total_loss * loss_weights).mean()
-        if self._layer == 0: 
+        if self._layer == 0 and self._use_emb_loss: # otherwise, Replay batch still updates context embedder, BUT not using hinge loss : 
             total_loss += (emb_loss).mean()
 
         self._optimizer.zero_grad()

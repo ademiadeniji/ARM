@@ -146,8 +146,8 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
         # utils.visualize_batch(replay_sample, filename='/home/mandi/ARM/debug/one_batch', img_size=128)
         # raise ValueError
         act_result = self._context_agent.act_for_replay(step, replay_sample)
-        replay_sample['prev_layer_encoded_context'] = act_result.action
-        replay_sample['emb_loss'] = act_result.info.get('emb_loss', 0)
+        replay_sample['prev_layer_encoded_context'] = act_result.action.to(self._device)
+        replay_sample['emb_loss'] = act_result.info.get('emb_loss', 0).to(self._device)
 
         # Samples are (N, K, ...) where we sample N buffers for each batch and get K transitions from each buffer
         replay_sample = {k: rearrange(v, 'b k ... -> (b k) ... ') for k, v in replay_sample.items()}

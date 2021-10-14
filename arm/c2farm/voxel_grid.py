@@ -137,6 +137,7 @@ class VoxelGrid(nn.Module):
 
     def coords_to_bounding_voxel_grid(self, coords, coord_features=None,
                                       coord_bounds=None):
+        coords = coords.to(self._device)
         voxel_indicy_denmominator = self._voxel_indicy_denmominator
         res, bb_mins = self._res, self._bb_mins
         if coord_bounds is not None:
@@ -146,7 +147,7 @@ class VoxelGrid(nn.Module):
             res = bb_ranges / (self._dims_orig.float() + MIN_DENOMINATOR)
             voxel_indicy_denmominator = res + MIN_DENOMINATOR
 
-        bb_mins_shifted = bb_mins - res  # shift back by one
+        bb_mins_shifted = bb_mins - res  # shift back by one 
         floor = torch.floor(
             (coords - bb_mins_shifted.unsqueeze(1)) / voxel_indicy_denmominator.unsqueeze(1)).int()
         voxel_indices = torch.min(floor, self._dims_m_one)

@@ -89,41 +89,80 @@ done
 # vary encoder.OPTIM.lr, context batch size,  
 
 # also do 10from20 buffers from Replay only 
-Query_size=5
-for E_LR in 1e-4 3e-4 
-do 
-    RUN=ReplayOnly-QEncode-Hinge${Query_size}-Emdlr${E_LR}-OneLoss
-    python launch_context.py run_name=$RUN  dev.offline=True \
-        dev.encode_context=True \
-        contexts.update_freq=1000000 \
-        dev.one_hot=False \
-        contexts.agent.replay_update=True dev.qagent_update_context=False \
-        replay.batch_size=12 replay.buffers_per_batch=10 \
-        contexts.agent.num_query=${Query_size} \
-        wandb.job_type='offline' framework.log_freq=100 \
-        method.emb_lr=${E_LR} \
-        rlbench.num_vars=20 # !!! cuz local rlbench is hacked 
+    # ti1:
+    Query_size=5
+    for E_LR in 1e-4 3e-4 
+    do 
+        RUN=ReplayOnly-QEncode-Hinge${Query_size}-Emdlr${E_LR}-OneLoss
+        python launch_context.py run_name=$RUN  dev.offline=True \
+            dev.encode_context=True \
+            contexts.update_freq=1000000 \
+            dev.one_hot=False \
+            contexts.agent.replay_update=True dev.qagent_update_context=False \
+            replay.batch_size=12 replay.buffers_per_batch=10 \
+            contexts.agent.num_query=${Query_size} \
+            wandb.job_type='offline' framework.log_freq=100 \
+            method.emb_lr=${E_LR} \
+            rlbench.num_vars=20 # !!! cuz local rlbench is hacked 
 
-done
-done 
+    done
+    done 
 
-Query_size=5
-for E_LR in 1e-4 3e-4 
-do 
-    RUN=ReplayOnly-NoQEncode-Hinge${Query_size}-Emdlr${E_LR}-OneLoss
-    python launch_context.py run_name=$RUN  dev.offline=True \
-        dev.encode_context=False \
-        contexts.update_freq=1000000 \
-        dev.one_hot=False \
-        contexts.agent.replay_update=True dev.qagent_update_context=False \
-        replay.batch_size=12 replay.buffers_per_batch=10 \
-        contexts.agent.num_query=${Query_size} \
-        wandb.job_type='offline' framework.log_freq=100 \
-        method.emb_lr=${E_LR} \
-        rlbench.num_vars=20  # !!! cuz local rlbench is hacked 
+    Query_size=5
+    for E_LR in 1e-4 3e-4 
+    do 
+        RUN=ReplayOnly-NoQEncode-Hinge${Query_size}-Emdlr${E_LR}-OneLoss
+        python launch_context.py run_name=$RUN  dev.offline=True \
+            dev.encode_context=False \
+            contexts.update_freq=1000000 \
+            dev.one_hot=False \
+            contexts.agent.replay_update=True dev.qagent_update_context=False \
+            replay.batch_size=12 replay.buffers_per_batch=10 \
+            contexts.agent.num_query=${Query_size} \
+            wandb.job_type='offline' framework.log_freq=100 \
+            method.emb_lr=${E_LR} \
+            rlbench.num_vars=20  # !!! cuz local rlbench is hacked 
 
-done
-done 
+    done
+    done 
+    # rtxs1 20from20
+        Query_size=2
+        for E_LR in 1e-4 3e-4 
+        do 
+            RUN=ReplayOnly-NoQEncode-Hinge${Query_size}-Emdlr${E_LR}-OneLoss
+            python launch_context.py run_name=$RUN  dev.offline=True \
+                dev.encode_context=False \
+                contexts.update_freq=1000000 \
+                dev.one_hot=False \
+                contexts.agent.replay_update=True dev.qagent_update_context=False \
+                replay.batch_size=6 replay.buffers_per_batch=20 \
+                contexts.agent.num_query=${Query_size} \
+                wandb.job_type='offline' framework.log_freq=100 \
+                method.emb_lr=${E_LR} \
+                rlbench.demo_path=/shared/mandi/all_rlbench_data  
+
+        done
+        done
+
+        Query_size=2
+        for E_LR in 1e-4 3e-4 
+        do 
+            RUN=ReplayOnly-QEncode-Hinge${Query_size}-Emdlr${E_LR}-OneLoss
+            python launch_context.py run_name=$RUN  dev.offline=True \
+                dev.encode_context=True \
+                contexts.update_freq=1000000 \
+                dev.one_hot=False \
+                contexts.agent.replay_update=True dev.qagent_update_context=False \
+                replay.batch_size=6 replay.buffers_per_batch=20 \
+                contexts.agent.num_query=${Query_size} \
+                wandb.job_type='offline' framework.log_freq=100 \
+                method.emb_lr=${E_LR} \
+                rlbench.demo_path=/shared/mandi/all_rlbench_data # !!! cuz local rlbench is hacked 
+
+        done
+    
+    #
+
 
 
 
@@ -168,3 +207,49 @@ do
         encoder.OPTIM.BASE_LR=${C_LR} contexts.sampler.batch_dim=10 
 done 
 done 
+
+
+# txl1 
+    # buffer12x10 for both loss
+    E_LR=1e-4 
+    Query_size=5
+    for C_LR in 1e-4 3e-4 1e-3 
+    do 
+    for FREQ in 1 10 100
+    do
+    RUN=BothBatch-BothLoss-QEncode-Hinge${Query_size}-Emdlr${E_LR}-Conlr${C_LR}
+    python launch_context.py run_name=$RUN  dev.offline=True \
+            dev.encode_context=True \
+            contexts.update_freq=${FREQ} \
+            dev.one_hot=False \
+            contexts.agent.replay_update=True dev.qagent_update_context=False \
+            replay.batch_size=12 replay.buffers_per_batch=10 \
+            contexts.agent.num_query=${Query_size} \
+            wandb.job_type='offline' framework.log_freq=50 \
+            method.emb_lr=${E_LR} \
+            rlbench.num_vars=20 \
+            encoder.OPTIM.BASE_LR=${C_LR} contexts.sampler.batch_dim=10 rlbench.demo_path=/shared/mandi/all_rlbench_data 
+    done 
+    done
+
+    # biggest batch: 12x20
+    E_LR=1e-4 
+    Query_size=5
+    for C_LR in 1e-4 3e-4 1e-3 
+    do 
+    for FREQ in 1 100
+    do
+    RUN=BothBatch-BothLoss-QEncode-Hinge${Query_size}-Emdlr${E_LR}-Conlr${C_LR}
+    python launch_context.py run_name=$RUN  dev.offline=True \
+            dev.encode_context=True \
+            contexts.update_freq=${FREQ} \
+            dev.one_hot=False \
+            contexts.agent.replay_update=True dev.qagent_update_context=False \
+            replay.batch_size=12 replay.buffers_per_batch=20 \
+            contexts.agent.num_query=${Query_size} \
+            wandb.job_type='offline' framework.log_freq=50 \
+            method.emb_lr=${E_LR} \
+            rlbench.num_vars=20 \
+            encoder.OPTIM.BASE_LR=${C_LR} contexts.sampler.batch_dim=20 rlbench.demo_path=/shared/mandi/all_rlbench_data 
+    done 
+    done

@@ -132,6 +132,7 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
 
     def step(self, act_result: ActResult) -> Transition:
         action = act_result.action
+        assert not np.any(np.isnan(action)), f'Got NaN in action results:{list(action)}'
         success = False
         obs = self._previous_obs_dict  # in case action fails.
         try:

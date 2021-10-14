@@ -86,11 +86,10 @@ class ContextAgent(Agent):
         self._current_context = None
         self._loss_mode = loss_mode
 
-        self._num_samples = num_samples  # dim K
+        self._num_samples = int(num_samples)  # dim K
         #   TecNet: 
-        self._num_query = num_query
+        self._num_query = int(num_query)
         assert num_query < num_samples, f"Cannot get {num_query} queries with just {num_samples} samples"
-        self._num_support = num_samples - num_query 
         self._margin = margin
         self._emb_lambda = emb_lambda
         #   PEARL
@@ -131,23 +130,27 @@ class ContextAgent(Agent):
         model_inp = rearrange(data, 'b k n ch h w -> (b k) ch n h w')
         embeddings = self._embedding_net(model_inp) # shape (b, embed_dim)
         embeddings = rearrange(embeddings, '(b k) d -> b k d', b=b, k=k)
+        act_result = ActResult(embeddings, info={})
         if self._replay_update:
             
             # self._optimizer.zero_grad()
             if self._loss_mode == 'hinge':
-                update_dict = self._compute_hinge_loss(embeddings, val=False)
-                self._replay_summaries = {
-                    'replay_batch/'+k: torch.mean(v) for k,v in update_dict.items()}
-                return ActResult(embeddings, info={'emb_loss': update_dict['emb_loss']})
+                update_dict = self._compute_hinge_loss(embeddings, val=False)  
+            elif self._loss_mode == 'hinge-v2':
+                update_dict = self._compute_hinge_loss_v2(embeddings, val=False)  
             else:
                 raise NotImplementedError
+            
+            act_result = ActResult(embeddings, info={'emb_loss': update_dict['emb_loss']})
+            self._replay_summaries = {
+                    'replay_batch/'+k: torch.mean(v) for k,v in update_dict.items()}
+            
             # loss = update_dict['emb_loss']
             # loss.backward(retain_graph=True)
             # self._optimizer.step()
 
-        ActResult(embeddings, info={})
+        return act_result
         
-
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:
         """observation batch may require different input preprocessing, handle here """
@@ -237,25 +240,24 @@ class ContextAgent(Agent):
         embeddings = self._embedding_net(model_inp)
         self._mean_embedding = embeddings.mean()
         embeddings = rearrange(embeddings, '(b k) d -> b k d', b=b, k=k)
-        if val:
-            if self._loss_mode == 'hinge':
-                update_dict = self._compute_hinge_loss(embeddings, val=val)
-                self._context_summaries.update({
-                    "context_batch/val/"+k: torch.mean(v) for k,v in update_dict.items()})
-            else:
-                raise NotImplementedError
-            return update_dict
 
-        self._optimizer.zero_grad()
+        if not val:
+            self._optimizer.zero_grad()
+         
         if self._loss_mode == 'hinge':
             update_dict = self._compute_hinge_loss(embeddings, val=val)
-            self._context_summaries.update({
-                "context_batch/train/"+k: torch.mean(v) for k,v in update_dict.items()})
+        elif self._loss_mode == 'hinge-v2':
+            update_dict = self._compute_hinge_loss_v2(embeddings, val=val)
         else:
             raise NotImplementedError
-        loss = update_dict['mean_emb_loss']
-        loss.backward()
-        self._optimizer.step()
+        self._context_summaries.update({
+                f"context_batch/{'val' if val else 'train'}/"+k: torch.mean(v) for k,v in update_dict.items()}) 
+
+        if not val:
+            self._optimizer.zero_grad() 
+            loss = update_dict['mean_emb_loss']
+            loss.backward()
+            self._optimizer.step()
 
         return update_dict
 
@@ -284,7 +286,7 @@ class ContextAgent(Agent):
         embeddings_norm = embeddings / embeddings.norm(dim=2, p=2, keepdim=True)
 
         num_query = 1 if val else self._num_query # ugly hack cuz not enough validation data 
-        num_support = 1 if val else self._num_support 
+        num_support = int(k - num_query)
  
         # support_embeddings = embeddings_norm[:, num_support:]
         # query_embeddings = embeddings_norm[:, :num_query].reshape(b * num_query, -1) 
@@ -293,8 +295,7 @@ class ContextAgent(Agent):
         # norm query too?
         # print('context agent embedding size and val?: ', embeddings_norm.shape, val )
         support_context = support_embeddings.mean(1)  # (B, E)
-        support_context = support_context / support_context.norm(
-            dim=1, p=2, keepdim=True)
+        support_context = support_context / support_context.norm(dim=1, p=2, keepdim=True) # B, d
         similarities = support_context.matmul(query_embeddings.transpose(0, 1))
         similarities = similarities.view(b, b, num_query)  # (B, B, queries)
 
@@ -328,6 +329,23 @@ class ContextAgent(Agent):
             'emd_acc': accuracy.float().mean(), 
         }
 
+    def _compute_hinge_loss_v2(self, embeddings, val=False):
+        # try just using all the rest embeddings as support, i.e. no torch.split()
+        b, k, d = embeddings.shape 
+        embeddings_norm = embeddings / embeddings.norm(dim=2, p=2, keepdim=True)
+
+        num_query = 1 if val else self._num_query # ugly hack cuz not enough validation data 
+        # num_support = int(k - num_query)
+ 
+        
+        query_embeddings = embeddings_norm[:, :num_query].reshape(b * num_query, -1)   
+        support_context = embeddings_norm.mean(1)  # (B, E)
+        support_context = support_context / support_context.norm(dim=1, p=2, keepdim=True) # B, d
+        similarities = support_context.matmul(query_embeddings.transpose(0, 1))
+        similarities = similarities.view(b, b, num_query)  # (B, B, queries)
+
+
+    
     def update_train_summaries(self) -> List[Summary]:
         summaries = []
         if self._one_hot:

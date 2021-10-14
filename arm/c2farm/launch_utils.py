@@ -204,20 +204,22 @@ def fill_replay(replay: ReplayBuffer,
             task, 1, variation_number=variation, random_selection=False,
             from_episode_number=d_idx, load_cameras=lookup_cams)[0]
         episode_keypoints = demo_loading_utils.keypoint_discovery(demo)
+        # print(f'Loading demo idx {d_idx}: found keypoints', episode_keypoints)
 
         for i in range(len(demo) - 1):
             if not demo_augmentation and i > 0:
                 break
             if i % demo_augmentation_every_n != 0:
                 continue
-            obs = demo[i]
+            initial_obs = demo[i]
             # If our starting point is past one of the keypoints, then remove it
             while len(episode_keypoints) > 0 and i >= episode_keypoints[0]:
                 episode_keypoints = episode_keypoints[1:]
             if len(episode_keypoints) == 0:
                 break
+            # print(f'Loading demo idx {d_idx}: adding tstep {i}, keypoints', episode_keypoints)
             _add_keypoints_to_replay(
-                replay, obs, demo, env, episode_keypoints, cameras,
+                replay, initial_obs, demo, env, episode_keypoints, cameras,
                 rlbench_scene_bounds, voxel_sizes, bounds_offset,
                 rotation_resolution, crop_augmentation, task, variation, task_id)
     #logging.info('Replay filled with demos.')
@@ -396,7 +398,8 @@ def create_agent_with_context(cfg: DictConfig, env,
             gamma=0.99,
             context_agent=context_agent, 
             update_context_agent=(cfg.dev.qagent_update_context and depth == 0),
-            pass_down_context=cfg.contexts.pass_down_context
+            pass_down_context=cfg.contexts.pass_down_context,
+            use_emb_loss=cfg.dev.qagent_use_emb_loss, 
         )
         qattention_agents.append(qattention_agent)
 

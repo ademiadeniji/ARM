@@ -1,4 +1,5 @@
-tasks: ['pick_up_cup']
+tasks: ['pick_up_cup'] # ['pick_up_cup', 'pick_and_lift', 'push_button', 'reach_target', 'take_lid_off_saucepan']
+10_tasks:  [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,push_button,reach_target,lamp_on,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand,stack_wine]
 run_name: burn 
 mt_only: False # True for no context, MT policy 
 log_path: ??? 
@@ -8,9 +9,8 @@ rlbench:
     all_tasks: ???       # [task_A, task_B,...]
     use_variations: ??? # [ [task_A_0], [task_B_0], ...
     all_variations: ???  # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
-    id_to_tasks: ???
-    # variations: -1         # Actually it's useless to limit this, 
-    demos: 10
+    id_to_tasks: ??? 
+    demos: 5
     demo_path: /home/mandi/all_rlbench_data
     episode_length: 10
     cameras: [front]
@@ -27,8 +27,7 @@ replay:
     prioritisation: True
     use_disk: False
     path: '/tmp/arm_sanity/replay'  # Only used when use_disk is True.
-    share_across_tasks: False 
-    buffer_key: 'variation_id' # either var or task id, use this to look for buffers
+    share_across_tasks: False  
     replay_size: 100000 # total size 
     update_buffer_prio: True 
     buffers_per_batch: 20
@@ -63,6 +62,7 @@ resume_step: 24300
 dev:
     q_thres: 0.75  
     qagent_update_context: True
+    qagent_use_emb_loss: True # for ablation set to False 
     one_hot: False 
     encode_context: False  # if one-hot, prolly ok not to encode
     qnet_context_latent_size: 16
@@ -76,6 +76,7 @@ dev:
     # exclude similar colors: red, green,blue,yellow,cyan,gray,orange,violet,black,white
     # exclude gray and white: [0,3,4,6,7,11,16,18]
     offline: False 
+    eval_only: False 
 
 contexts:
   num_update_itrs: 5
@@ -107,7 +108,7 @@ contexts:
 dataset:
   image_size:                 [128, 128]
   root_dir:                   ${rlbench.demo_path}
-  num_variations_per_task:    -1 # just loads all vars, no way to constraint envrunner anyway
+  num_variations_per_task:    -1 # just loads all vars
   num_episodes_per_variation: 20 # up to 20
   num_steps_per_episode:      2 # 1, 2 for now  
   exclude_tasks:              []

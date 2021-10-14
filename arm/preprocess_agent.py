@@ -37,7 +37,10 @@ class PreprocessAgent(Agent):
             if 'rgb' in k:
                 replay_sample[k] = self._norm_rgb_(v)
         # self._replay_sample = replay_sample
-        self._replay_sample = {k: rearrange(v, 'n k ... -> (n k) ...') for k, v in replay_sample.items()}
+        self._replay_sample = {k: rearrange(v, 'n k ... -> (n k) ...') for k, v in replay_sample.items()} # the stack agent does another reshape, here is just for logging purpose 
+        for k, v in replay_sample.items():
+            if isinstance(v, torch.Tensor):
+                replay_sample[k] = v.to(self._device) 
         pose_dict = self._pose_agent.update(step, replay_sample)
          
         return pose_dict

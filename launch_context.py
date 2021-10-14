@@ -50,6 +50,7 @@ from arm.models.utils import make_optimizer
 from functools import partial
 from torch.utils.data import DataLoader
 from torch.multiprocessing import Lock, cpu_count
+from collections import defaultdict
 
 ACTION_MODE = ActionMode(
         ArmActionMode.ABS_EE_POSE_PLAN_WORLD_FRAME,
@@ -104,7 +105,7 @@ def run_seed(
     replay_ratio = cfg.framework.get("replay_ratio", None)
     replay_path = join(cfg.replay.path, cfg.tasks_name, cfg.method.name, 'seed%d' % seed)
     action_min_max = None
-
+    task_var_to_replay_idx = defaultdict(dict)
     if cfg.method.name == 'C2FARM':
         if cfg.replay.share_across_tasks:  
             logging.info(f'Using only one replay for multiple tasks, one batch size: {cfg.replay.batch_size}')
@@ -115,8 +116,7 @@ def run_seed(
                 replay_path if cfg.replay.use_disk else None, cams, env,
                 cfg.method.voxel_sizes,
                 replay_size=cfg.replay.replay_size
-                )
-            var_to_replay_idx = dict()
+                ) 
             for i, (one_task, its_variations) in enumerate(zip(all_tasks, cfg.rlbench.use_variations)):
                 for task_var in its_variations:
                     var = int( task_var.split("_")[-1]) 
@@ -135,11 +135,12 @@ def run_seed(
                         variation=var,
                         task_id=i,
                         )
+                    task_var_to_replay_idx[i][var] = 0
                 print(f"Task id {i}: {one_task}, **filled** replay for {len(its_variations)} variations")
             replays = [r]
         else:
             replays = []
-            var_to_replay_idx = dict()
+            
             cfg.replay.replay_size = int(cfg.replay.replay_size / sum([len(_vars) for _vars in cfg.rlbench.use_variations]) )
             logging.info(f'Splitting total replay size into each buffer: {cfg.replay.replay_size}')
             for i, (one_task, its_variations) in enumerate(zip(all_tasks, cfg.rlbench.use_variations)):
@@ -164,10 +165,10 @@ def run_seed(
                         variation=var,
                         task_id=i,
                         )
-                    var_to_replay_idx[var] = len(replays)
+                    task_var_to_replay_idx[i][var] = len(replays)
                     replays.append(r)
                 print(f"Task id {i}: {one_task}, **created** and filled replay for {len(its_variations)} variations")
-                print('Created mapping from var ids to buffer ids:', var_to_replay_idx)
+            print('Created mapping from var ids to buffer ids:', task_var_to_replay_idx)
             cfg.replay.total_batch_size = int(cfg.replay.batch_size * cfg.replay.buffers_per_batch)
             replay_ratio = cfg.replay.total_batch_size
 
@@ -228,9 +229,9 @@ def run_seed(
         weightsdir=weightsdir,
         max_fails=cfg.rlbench.max_fails,
         device_list=env_gpus,
-        share_buffer_across_tasks=cfg.replay.share_across_tasks,
-        buffer_key=cfg.replay.buffer_key,
-        var_to_replay_idx=var_to_replay_idx,
+        share_buffer_across_tasks=cfg.replay.share_across_tasks, 
+        task_var_to_replay_idx=task_var_to_replay_idx,
+        eval_only=cfg.dev.eval_only, # only run eval EnvRunners 
         )  
 
     if cfg.framework.wandb_logging:
@@ -263,6 +264,12 @@ def run_seed(
     else:
         logging.info('\n Starting no-context TrainRunner')
 
+    resume_dir = None
+    if cfg.resume:
+        resume_dir = join(cfg.resume_path, cfg.resume_run, 'weights', str(cfg.resume_step))
+        assert os.path.exists(resume_dir), 'Cannot find the weights saved at path: '+resume_dir
+        cfg.framework.resume_dir = resume_dir 
+
     train_runner = PyTorchTrainContextRunner(
         agent, env_runner,
         wrapped_replays, 
@@ -288,9 +295,10 @@ def run_seed(
         buffers_per_batch=cfg.replay.buffers_per_batch,
         update_buffer_prio=cfg.replay.update_buffer_prio,
         offline=cfg.dev.offline,
+        eval_only=cfg.dev.eval_only,  
         )
  
-    train_runner.start()
+    train_runner.start(resume_dir)
     del train_runner
     del env_runner
     torch.cuda.empty_cache()
@@ -313,21 +321,25 @@ def main(cfg: DictConfig) -> None:
     cfg.rlbench.cameras = cfg.rlbench.cameras if isinstance(
         cfg.rlbench.cameras, ListConfig) else [cfg.rlbench.cameras]
     obs_config = _create_obs_config(cfg.rlbench.cameras,
-                                    cfg.rlbench.camera_resolution)
-    
-    if cfg.rlbench.num_vars > -1: 
-        logging.info(f'Creating Env with only {cfg.rlbench.num_vars} variation and not sampling others!')
+                                    cfg.rlbench.camera_resolution) 
+        
     variation_idxs = [j for j in range(cfg.rlbench.num_vars)] if cfg.rlbench.num_vars > -1 else []
     if len(cfg.dev.handpick) > 0:
-        logging.info('Hand-picking only variation ids: ')
+        logging.info('Hand-picking limited variation ids: ')
         print(cfg.dev.handpick)
         variation_idxs = cfg.dev.handpick
+
+    if len(tasks) > 1:
+        variation_idxs = [0] 
+        logging.info('Running multi-task setting, just take the first one variation for now')
+    logging.info(f'Creating Env with that samples only from below variations:')
+    print(variation_idxs)
 
     env = CustomMultiTaskRLBenchEnv(
         task_classes=task_classes, task_names=tasks, observation_config=obs_config,
         action_mode=ACTION_MODE, dataset_root=cfg.rlbench.demo_path,
         episode_length=cfg.rlbench.episode_length, headless=True, 
-        use_variations=variation_idxs,
+        use_variations=variation_idxs, # the tasks may have different num of variations, deal w that later 
         )
      
     all_tasks = []
@@ -368,9 +380,11 @@ def main(cfg: DictConfig) -> None:
     all_task_ids = [ i for i in range(len(all_tasks)) ]
 
     tasks_name = "-".join(cfg.tasks) + f"-{var_count}var"
+    if len(cfg.tasks) > 3:
+        tasks_name = f'{len(cfg.tasks)}Task-{var_count}var' 
+        logging.info(f'Got {len(cfg.tasks)} tasks, re-naming the run as: {tasks_name}')
     cfg.tasks_name = tasks_name
-    logging.info(f"Using tasks: {tasks_name} and _all_ of their variations")
-
+     
     if not cfg.mt_only and cfg.rlbench.num_vars == -1 :
         # sanity check context dataset sampler
         if cfg.contexts.sampler.sample_mode == 'variation':
