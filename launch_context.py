@@ -119,8 +119,7 @@ def run_seed(
                 ) 
             for i, (one_task, its_variations) in enumerate(zip(all_tasks, cfg.rlbench.use_variations)):
                 for task_var in its_variations:
-                    var = int( task_var.split("_")[-1]) 
-                    var_to_replay_idx[var] = 0
+                    var = int( task_var.split("_")[-1])  
                     c2farm.launch_utils.fill_replay(
                         r, one_task, env, 
                         cfg.rlbench.demos,
@@ -140,7 +139,6 @@ def run_seed(
             replays = [r]
         else:
             replays = []
-            
             cfg.replay.replay_size = int(cfg.replay.replay_size / sum([len(_vars) for _vars in cfg.rlbench.use_variations]) )
             logging.info(f'Splitting total replay size into each buffer: {cfg.replay.replay_size}')
             for i, (one_task, its_variations) in enumerate(zip(all_tasks, cfg.rlbench.use_variations)):
@@ -170,6 +168,7 @@ def run_seed(
                 print(f"Task id {i}: {one_task}, **created** and filled replay for {len(its_variations)} variations")
             print('Created mapping from var ids to buffer ids:', task_var_to_replay_idx)
             cfg.replay.total_batch_size = int(cfg.replay.batch_size * cfg.replay.buffers_per_batch)
+             
             replay_ratio = cfg.replay.total_batch_size
 
         if cfg.mt_only:
@@ -179,7 +178,7 @@ def run_seed(
     else:
         raise ValueError('Method %s does not exists.' % cfg.method.name)
 
-    wrapped_replays = [PyTorchReplayBuffer(r) for r in replays]
+    wrapped_replays = [PyTorchReplayBuffer(r, num_workers=1) for r in replays]
     # NOTE: stat accumulator still using task-based logging, too many variations
     # stat_accum = MultiTaskAccumulator(cfg.tasks, eval_video_fps=30) 
     logging.info('Creating Stat Accumulator: ')
@@ -329,9 +328,8 @@ def main(cfg: DictConfig) -> None:
         print(cfg.dev.handpick)
         variation_idxs = cfg.dev.handpick
 
-    if len(tasks) > 1:
-        variation_idxs = [0] 
-        logging.info('Running multi-task setting, just take the first one variation for now')
+    if len(tasks) > 1:   
+        logging.info('Running multi-task setting, for now, make sure all tasks have the same num of variations')
     logging.info(f'Creating Env with that samples only from below variations:')
     print(variation_idxs)
 

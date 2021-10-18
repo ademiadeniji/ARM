@@ -130,7 +130,9 @@ class ContextAgent(Agent):
         model_inp = rearrange(data, 'b k n ch h w -> (b k) ch n h w')
         embeddings = self._embedding_net(model_inp) # shape (b, embed_dim)
         embeddings = rearrange(embeddings, '(b k) d -> b k d', b=b, k=k)
-        act_result = ActResult(embeddings, info={})
+        action_embeddings = repeat(embeddings[:, 0, :], 'b d -> b k d', b=b, k=k)
+        # print('shapes of action embeddings vs embeddings:', action_embeddings.shape, embeddings.shape)
+        act_result = ActResult(action_embeddings, info={})
         if self._replay_update:
             
             # self._optimizer.zero_grad()
@@ -141,7 +143,7 @@ class ContextAgent(Agent):
             else:
                 raise NotImplementedError
             
-            act_result = ActResult(embeddings, info={'emb_loss': update_dict['emb_loss']})
+            act_result = ActResult(action_embeddings, info={'emb_loss': update_dict['emb_loss']})
             self._replay_summaries = {
                     'replay_batch/'+k: torch.mean(v) for k,v in update_dict.items()}
             
@@ -306,6 +308,8 @@ class ContextAgent(Agent):
 
         negatives = torch.masked_select(similarities, diag.unsqueeze(-1) == 0)
         # (batch, batch-1, query)
+        # print('shapes:', query_embeddings.shape, similarities.shape, diag.shape, )
+        # print('negatives shape:', negatives.shape, positives.shape)
         negatives = negatives.view(b, b - 1, -1)
 
         loss = torch.max(self._zero, self._margin - positives + negatives)

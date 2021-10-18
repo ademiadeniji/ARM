@@ -28,7 +28,7 @@ replay:
     use_disk: False
     path: '/tmp/arm_sanity/replay'  # Only used when use_disk is True.
     share_across_tasks: False  
-    replay_size: 100000 # total size 
+    replay_size: 500000 # total size 
     update_buffer_prio: True 
     buffers_per_batch: 20
 
@@ -43,7 +43,7 @@ framework:
     tensorboard_logging: True
     csv_logging: False
     wandb_logging: True
-    training_iterations: 5000
+    training_iterations: 30000
     gpu: 0
     logdir: '/home/mandi/ARM/log/'
     seeds: 1
@@ -81,16 +81,16 @@ dev:
 contexts:
   num_update_itrs: 5
   val_freq:   100
-  update_freq: 2  # as compared to agent update
+  update_freq: 100000  # as compared to agent update
   pass_down_context: True 
   pretrain_context_steps: 0 
   agent:
     with_action_context: False
     is_train: True
     embedding_size: 16
-    num_query:  2 
-    num_samples: ${replay.batch_size}
-    margin:     0.5
+    num_query:  5
+    num_samples: 12
+    margin:     0.3
     emb_lambda: 1.0
     save_context: False 
     loss_mode:  'hinge' 
@@ -98,11 +98,11 @@ contexts:
     encoder_cfg: ${encoder}
     replay_update: False 
   sampler:
-    batch_dim:             10    # dimension 'B'
+    batch_dim:             ${replay.buffers_per_batch}   # dimension 'B'
     samples_per_variation: ${replay.batch_size}      # dimension 'N' 
     drop_last:             True 
     sample_mode:           'variation' # or 'variation'
-    val_batch_dim:             20      # actually let's fix this for all sweeping runs to get a fair comparision 
+    val_batch_dim:             10      # actually let's fix this for all sweeping runs to get a fair comparision 
     val_samples_per_variation: 2      # dimension 'N', has to limit to 2 due to datasplit
 
 dataset:

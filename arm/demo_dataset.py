@@ -486,7 +486,7 @@ class PyTorchIterableDemoDataset(IterableDataset):
         for idx in var_idxs: 
             episode_idxs = np.random.choice(self._batch_idx_list[idx], size=self._samples_per_variation, replace=False) 
             batch.append(episode_idxs)
-        assert len(batch) == self._batch_dim
+        # assert len(batch) == self._batch_dim
 
         data_batch = []
         for episode_idxs in batch:
@@ -504,6 +504,26 @@ class PyTorchIterableDemoDataset(IterableDataset):
 
     def sample_for_replay(self, task_ids, variation_ids):
         return self._demo_dataset.sample_for_replay(task_ids, variation_ids)
+
+    def sample_for_replay_no_match(self, task_id, variation_id):
+        """ This matches the B dimension but may have separate N dimension """
+        batch = []
+        if self._sample_mode == 'task':
+            idx = task_id
+        elif self._sample_mode == 'variation':
+            idx = variation_id
+        else:
+            raise NotImplementedError
+        episode_idxs = np.random.choice(self._batch_idx_list[idx], size=self._samples_per_variation, replace=False) 
+        batch.append(episode_idxs)
+
+        assert len(batch) == self._batch_dim, f"Sampler expected batch dim {self._batch_dim} but got {len(batch)} "
+        data_batch = []
+        for episode_idxs in batch:
+            all_eps_data = [self._demo_dataset.__getitem__(idx) for idx in episode_idxs]
+            data_batch.extend(all_eps_data) 
+        return collate_by_id(self._collate_id, data_batch)
+
 
     def __iter__(self):
         return iter(self._generator())
