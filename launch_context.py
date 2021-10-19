@@ -168,8 +168,7 @@ def run_seed(
                 print(f"Task id {i}: {one_task}, **created** and filled replay for {len(its_variations)} variations")
             print('Created mapping from var ids to buffer ids:', task_var_to_replay_idx)
             cfg.replay.total_batch_size = int(cfg.replay.batch_size * cfg.replay.buffers_per_batch)
-             
-            replay_ratio = cfg.replay.total_batch_size
+              
 
         if cfg.mt_only:
             agent = c2farm.launch_utils.create_agent(cfg, env)
@@ -187,7 +186,8 @@ def run_seed(
         tasks_vars=cfg.rlbench.use_variations,
         eval_video_fps=30,
         mean_only=True,
-        max_len=5,
+        max_len=3,
+        log_all_vars=cfg.framework.log_all_vars,
         ) 
 
     logdir = join(cfg.log_path, 'seed%d' % seed)
@@ -295,6 +295,8 @@ def run_seed(
         update_buffer_prio=cfg.replay.update_buffer_prio,
         offline=cfg.dev.offline,
         eval_only=cfg.dev.eval_only,  
+        switch_online_tasks=cfg.framework.switch_online_tasks,
+        task_var_to_replay_idx=task_var_to_replay_idx,
         )
  
     train_runner.start(resume_dir)
@@ -396,6 +398,8 @@ def main(cfg: DictConfig) -> None:
     cwd = os.getcwd()
 
     cfg.run_name = cfg.run_name + f"-Replay_B{cfg.replay.batch_size}x{1 if cfg.replay.share_across_tasks else cfg.replay.buffers_per_batch}"
+    if not cfg.dev.one_hot:
+        cfg.run_name += f"-Q{cfg.contexts.agent.num_query}"
     if cfg.mt_only or cfg.dev.one_hot :
         logging.info('Use MT-policy or One-hot context, no context embedding, setting EnvRunner visible GPUs to 1')
         cfg.run_name += '-NoContext' 

@@ -60,7 +60,7 @@ def make_optimizer(model, cfg, return_params=False):
         len(list(model.parameters())),
     )
     print(
-        "bn {}, non bn {}, zero {} no grad {}".format(
+        "Making optimizer for embedding net params, counted: bn {}, non bn {}, zero {} no grad {}".format(
             len(bn_parameters),
             len(non_bn_parameters),
             len(zero_parameters),

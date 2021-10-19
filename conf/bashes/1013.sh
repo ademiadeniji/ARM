@@ -91,27 +91,3 @@ Query_size=5
     
       framework.wandb_logging=False
 
-# debug: spreaded cpu 
-Query_size=5
-    E_LR=1e-4
-    C_LR=1e-4 
-    RUN=10VarEach 
-    python launch_context.py run_name=${RUN} \
-    tasks=['pick_up_cup','pick_and_lift','reach_target'] rlbench.num_vars=10 \
-    replay.batch_size=12 replay.buffers_per_batch=5 replay.share_across_tasks=False \
-    dev.encode_context=True contexts.pass_down_context=True \
-    rlbench.demo_path=/shared/mandi/all_rlbench_data  \
-    contexts.agent.replay_update=True dev.qagent_update_context=True contexts.agent.num_query=${Query_size} \
-    method.emb_lr=${E_LR} contexts.sampler.batch_dim=10
-
-# after limiting cpu, does it hurt to sample from a lot of buffers each time 
-   Query_size=3
-    E_LR=1e-4
-    C_LR=1e-4 
-    RUN=15VarEach 
-    python launch_context.py run_name=${RUN} \
-    tasks=['pick_up_cup','pick_and_lift','reach_target','push_button'] rlbench.num_vars=10 \
-    replay.batch_size=4 replay.buffers_per_batch=8 replay.share_across_tasks=False \
-    dev.encode_context=True contexts.pass_down_context=True \
-    contexts.agent.replay_update=True dev.qagent_update_context=True contexts.agent.num_query=${Query_size} \
-    method.emb_lr=${E_LR} contexts.sampler.batch_dim=10 framework.wandb_logging=False

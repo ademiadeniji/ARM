@@ -147,7 +147,10 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
         # raise ValueError
         act_result = self._context_agent.act_for_replay(step, replay_sample)
         replay_sample['prev_layer_encoded_context'] = act_result.action.to(self._device)
-        replay_sample['emb_loss'] = act_result.info.get('emb_loss', 0).to(self._device)
+        emb_loss = act_result.info.get('emb_loss', None)
+        if emb_loss is not None:
+            emb_loss = emb_loss.to(self._device) 
+        replay_sample['emb_loss'] = emb_loss
 
         # Samples are (N, K, ...) where we sample N buffers for each batch and get K transitions from each buffer
         replay_sample = {k: rearrange(v, 'b k ... -> (b k) ... ') for k, v in replay_sample.items()}

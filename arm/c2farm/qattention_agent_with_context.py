@@ -301,14 +301,15 @@ class QAttentionContextAgent(Agent):
         #context_sample = self._preprocess_context_inputs(replay_sample)
         # each layer Might be also update context embedder's params via here 
         # if self._layer > 0 and self._pass_down_context:
-        #     context = replay_sample['prev_layer_encoded_context'].detach()
-             
+        #     context = replay_sample['prev_layer_encoded_context'].detach() 
         # else:
         #     context = self._context_agent.act_for_replay(step, replay_sample).action.to(self._device) 
         # NOTE(new 10/08): stacker agent handle act_for_replay now 
         # still, later layers cannot update context embeder
         context = replay_sample['prev_layer_encoded_context'].to(self._device) 
-        emb_loss = replay_sample.get('emb_loss', 0).to(self._device) 
+        emb_loss = replay_sample.get('emb_loss',  None)
+        if emb_loss is not None:
+            emb_loss = emb_loss.to(self._device) 
         
         if self._layer > 0:
             context = context.detach()

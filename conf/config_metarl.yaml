@@ -10,7 +10,7 @@ rlbench:
     use_variations: ??? # [ [task_A_0], [task_B_0], ...
     all_variations: ???  # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
     id_to_tasks: ??? 
-    demos: 5
+    demos: 1
     demo_path: /home/mandi/all_rlbench_data
     episode_length: 10
     cameras: [front]
@@ -28,17 +28,17 @@ replay:
     use_disk: False
     path: '/tmp/arm_sanity/replay'  # Only used when use_disk is True.
     share_across_tasks: False  
-    replay_size: 500000 # total size 
+    replay_size: 100000 # total size 
     update_buffer_prio: True 
     buffers_per_batch: 20
 
 framework:
     log_freq:  200 # set to bigger to not save so many media files 
     save_freq: 100
-    train_envs: 2
+    train_envs: 1
     eval_envs: 1
     env_runner_gpu: 2
-    replay_ratio: ${replay.batch_size}
+    replay_ratio: 3
     transitions_before_train: 100
     tensorboard_logging: True
     csv_logging: False
@@ -52,6 +52,8 @@ framework:
     resume_run: ${resume_run}
     resume_step:  ${resume_step}
     resume_dir: ''
+    log_all_vars: True 
+    switch_online_tasks: 0
 
 
 resume: False

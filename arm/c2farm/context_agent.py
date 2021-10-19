@@ -116,7 +116,8 @@ class ContextAgent(Agent):
         self._zero = torch.tensor(0.0, device=device)
         # use a separate optimizer here to update the params with metric loss,
         # optionally, qattention agents also have optimizers that update the embedding params here
-        self._optimizer, self._optim_params = make_optimizer(
+        if training:
+            self._optimizer, self._optim_params = make_optimizer(
                 self._embedding_net, self._encoder_cfg, return_params=True)
  
     def act_for_replay(self, step, replay_sample):
