@@ -152,7 +152,8 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
             emb_loss = emb_loss.to(self._device) 
         replay_sample['emb_loss'] = emb_loss
 
-        # Samples are (N, K, ...) where we sample N buffers for each batch and get K transitions from each buffer
+        # Samples are (B, K, ...) where we sample B buffers for each batch and get K transitions from each buffer
+        # note this K could be different between context part and obs part 
         replay_sample = {k: rearrange(v, 'b k ... -> (b k) ... ') for k, v in replay_sample.items()}
 
         priorities = 0

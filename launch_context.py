@@ -251,13 +251,13 @@ def run_seed(
         train_demo_dataset = PyTorchIterableDemoDataset(
             demo_dataset=train_demo_dataset,
             batch_dim=cfg.contexts.sampler.batch_dim,
-            samples_per_variation=cfg.contexts.sampler.samples_per_variation,
+            samples_per_variation=cfg.contexts.sampler.k_dim,
             sample_mode=cfg.contexts.sampler.sample_mode,
             )
         val_demo_dataset = PyTorchIterableDemoDataset(
             demo_dataset=val_demo_dataset,
             batch_dim=cfg.contexts.sampler.val_batch_dim,
-            samples_per_variation=cfg.contexts.sampler.val_samples_per_variation,
+            samples_per_variation=cfg.contexts.sampler.val_k_dim,
             sample_mode=cfg.contexts.sampler.sample_mode,
             )
     else:
@@ -399,7 +399,7 @@ def main(cfg: DictConfig) -> None:
 
     cfg.run_name = cfg.run_name + f"-Replay_B{cfg.replay.batch_size}x{1 if cfg.replay.share_across_tasks else cfg.replay.buffers_per_batch}"
     if not cfg.dev.one_hot:
-        cfg.run_name += f"-Q{cfg.contexts.agent.num_query}"
+        cfg.run_name += f"-Q{cfg.contexts.agent.query_ratio}"
     if cfg.mt_only or cfg.dev.one_hot :
         logging.info('Use MT-policy or One-hot context, no context embedding, setting EnvRunner visible GPUs to 1')
         cfg.run_name += '-NoContext' 
@@ -429,7 +429,7 @@ def main(cfg: DictConfig) -> None:
         for i, (one_task, its_variations) in enumerate(zip(all_tasks, all_variations)):
             for task_var in its_variations:
                 var = int( task_var.split("_")[-1])
-                data = train_demo_dataset.sample_one_variation(i, var) # this only loads the first episode of each variation 
+                data = train_demo_dataset.sample_one_variation(i, var, size=1)[0] # this only loads the first episode of each variation 
                 assert one_task in data['name'], f"Task idx {i}. variation {var} \
                     should be {task_var} from environment, but got {data['name']} instead"
 

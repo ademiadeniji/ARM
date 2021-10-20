@@ -13,9 +13,11 @@ from arm import utils
 from omegaconf import DictConfig
 from einops import rearrange, reduce, repeat, parse_shape
 import logging
+from yarr.utils.multitask_rollout_generator import TASK_ID, VAR_ID # use this to get K_action
 
 NAME = 'ContextEmbedderAgent'
 CONTEXT_KEY = 'demo_sample'
+
 
 class SequenceStrategy(ABC):
 
@@ -63,7 +65,7 @@ class ContextAgent(Agent):
                  is_train: bool,
                  # for traintime:
                  embedding_size: int,  
-                 num_query: int,   
+                 query_ratio: float,
                  margin: float = 0.1,
                  emb_lambda: float = 1.0,
                  save_context: bool = False, 
@@ -71,8 +73,8 @@ class ContextAgent(Agent):
                  prod_of_gaus_factors_over_batch: bool = False, # for PEARL 
                  encoder_cfg: DictConfig = None,
                  one_hot: bool = False,
-                 replay_update: bool = False,  
-                 num_samples: int = 2,
+                 replay_update: bool = False,   
+                 single_embedding_replay: bool = True,
                  ):
         self._embedding_net = embedding_net
         self._encoder_cfg = encoder_cfg
@@ -85,11 +87,9 @@ class ContextAgent(Agent):
             raise Exception('Embedding agent action context is only valid for StackOnChannel sequence strategy')
         self._current_context = None
         self._loss_mode = loss_mode
-
-        self._num_samples = int(num_samples)  # dim K
+ 
         #   TecNet: 
-        self._num_query = int(num_query)
-        assert num_query < num_samples, f"Cannot get {num_query} queries with just {num_samples} samples"
+        self._query_ratio = query_ratio 
         self._margin = margin
         self._emb_lambda = emb_lambda
         #   PEARL
@@ -101,9 +101,8 @@ class ContextAgent(Agent):
         self._one_hot = one_hot 
         self._replay_update = replay_update
         self._replay_summaries, self._context_summaries = {}, {}
-        
-        logging.info(f'Creating context agent that takes {num_samples} \
-            samples per replay buffer, and first {num_query} samples as query')
+        self.single_embedding_replay = single_embedding_replay
+        logging.info(f'Creating context agent that takes {query_ratio} of the total K samples as query')
 
     def build(self, training: bool, device: torch.device = None):
         """Train and Test time use the same build() """
@@ -122,16 +121,25 @@ class ContextAgent(Agent):
  
     def act_for_replay(self, step, replay_sample):
         """Use this to embed context only for qattention agent update"""
-        data = replay_sample[CONTEXT_KEY].to(self._device)
+        data = replay_sample[CONTEXT_KEY].to(self._device) 
         if self._one_hot:
             return ActResult(data) 
         # NOTE(10/08) now replay sample is also shape (bsize, num_samples, vid_len, 3, 128, 128) 
         # note shape here is (bsize, video_len, 3, 128, 128), preprocess_agent squeezed the task dimension 
         b, k, n, ch, img_h, img_w = data.shape
+
+        task_ids = replay_sample[TASK_ID] # this should be (B, K_action, ...)
+        assert task_ids.shape[0] == b, f'B dimension in replay samples should all be the same, got {task_ids.shape[0]} and {b}'
+        k_action = task_ids.shape[1]
+
         model_inp = rearrange(data, 'b k n ch h w -> (b k) ch n h w')
         embeddings = self._embedding_net(model_inp) # shape (b, embed_dim)
         embeddings = rearrange(embeddings, '(b k) d -> b k d', b=b, k=k)
-        action_embeddings = repeat(embeddings[:, 0, :], 'b d -> b k d', b=b, k=k)
+        if self.single_embedding_replay:
+            action_embeddings = repeat(embeddings[:, 0, :], 'b d -> b k d', b=b, k=k_action)
+        else:
+            idxs = torch.randint( k, (k_action,) )  #select _with_ replacement 
+            action_embeddings = embeddings[:, idxs]
         # print('shapes of action embeddings vs embeddings:', action_embeddings.shape, embeddings.shape)
         act_result = ActResult(action_embeddings, info={})
         if self._replay_update:
@@ -288,7 +296,7 @@ class ContextAgent(Agent):
         b, k, d = embeddings.shape 
         embeddings_norm = embeddings / embeddings.norm(dim=2, p=2, keepdim=True)
 
-        num_query = 1 if val else self._num_query # ugly hack cuz not enough validation data 
+        num_query = 1 if val else int(self._query_ratio * k) # ugly hack cuz not enough validation data 
         num_support = int(k - num_query)
  
         # support_embeddings = embeddings_norm[:, num_support:]

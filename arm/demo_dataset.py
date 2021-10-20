@@ -249,19 +249,20 @@ class RLBenchDemoDataset(Dataset):
 
         return data_list
 
-    def sample_one_variation(self, task_id, variation_id):
+    def sample_one_variation(self, task_id, variation_id, size=1):
         
-        variations = self._task_variation_tree[task_id]
-        
+        variations = self._task_variation_tree[task_id] 
         episodes = variations[variation_id]
-        eps_idx = np.random.randint(0, len(episodes))
+        assert size <= len(episodes), f'Demo dataset for task{task_id}-var{variation_id} has {len(episodes)}, not enough to match desired {size}'
+        eps_idxs = np.random.choice(range(len(episodes)), size, replace=False)
         # print('sample_one_variation:', task_id, variation_id, self._all_file_names[episodes[eps_idx]])
-        data = self.__getitem__( episodes[eps_idx] )
+        data = [self.__getitem__(episodes[eps_idx]) for eps_idx in eps_idxs]
         return data 
 
     def sample_for_replay(self, task_ids, variation_ids):
+        # NEW(1019): deprecate this to do no-match instead
         data_list = [
-            self.sample_one_variation(task_id, variation_id) \
+            self.sample_one_variation(task_id, variation_id)[0] \
                 for task_id, variation_id in zip(task_ids, variation_ids)
         ] 
         return data_list
@@ -506,23 +507,9 @@ class PyTorchIterableDemoDataset(IterableDataset):
         return self._demo_dataset.sample_for_replay(task_ids, variation_ids)
 
     def sample_for_replay_no_match(self, task_id, variation_id):
-        """ This matches the B dimension but may have separate N dimension """
-        batch = []
-        if self._sample_mode == 'task':
-            idx = task_id
-        elif self._sample_mode == 'variation':
-            idx = variation_id
-        else:
-            raise NotImplementedError
-        episode_idxs = np.random.choice(self._batch_idx_list[idx], size=self._samples_per_variation, replace=False) 
-        batch.append(episode_idxs)
-
-        assert len(batch) == self._batch_dim, f"Sampler expected batch dim {self._batch_dim} but got {len(batch)} "
-        data_batch = []
-        for episode_idxs in batch:
-            all_eps_data = [self._demo_dataset.__getitem__(idx) for idx in episode_idxs]
-            data_batch.extend(all_eps_data) 
-        return collate_by_id(self._collate_id, data_batch)
+        batch = self._demo_dataset.sample_one_variation(
+            task_id, variation_id, size=self._samples_per_variation) 
+        return batch 
 
 
     def __iter__(self):

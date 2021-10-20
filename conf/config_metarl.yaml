@@ -10,7 +10,7 @@ rlbench:
     use_variations: ??? # [ [task_A_0], [task_B_0], ...
     all_variations: ???  # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
     id_to_tasks: ??? 
-    demos: 1
+    demos: 3
     demo_path: /home/mandi/all_rlbench_data
     episode_length: 10
     cameras: [front]
@@ -33,7 +33,7 @@ replay:
     buffers_per_batch: 20
 
 framework:
-    log_freq:  200 # set to bigger to not save so many media files 
+    log_freq:  100 # set to bigger to not save so many media files 
     save_freq: 100
     train_envs: 1
     eval_envs: 1
@@ -52,7 +52,7 @@ framework:
     resume_run: ${resume_run}
     resume_step:  ${resume_step}
     resume_dir: ''
-    log_all_vars: True 
+    log_all_vars: False
     switch_online_tasks: 0
 
 
@@ -90,22 +90,22 @@ contexts:
     with_action_context: False
     is_train: True
     embedding_size: 16
-    num_query:  5
-    num_samples: 12
-    margin:     0.3
+    query_ratio: 0.3 # takes this much out of the total K samples 
+    margin:     0.1
     emb_lambda: 1.0
     save_context: False 
     loss_mode:  'hinge' 
     prod_of_gaus_factors_over_batch: False # for PEARL 
     encoder_cfg: ${encoder}
     replay_update: False 
+    single_embedding_replay: True # if False, draw equal amount of embeddings from context 
   sampler:
-    batch_dim:             ${replay.buffers_per_batch}   # dimension 'B'
-    samples_per_variation: ${replay.batch_size}      # dimension 'N' 
+    batch_dim:             ${replay.buffers_per_batch}   # dimension 'B' -> this has to match num of buffers
+    k_dim:                 ${replay.batch_size}      # dimension 'K'     -> this doesnt 
     drop_last:             True 
     sample_mode:           'variation' # or 'variation'
     val_batch_dim:             10      # actually let's fix this for all sweeping runs to get a fair comparision 
-    val_samples_per_variation: 2      # dimension 'N', has to limit to 2 due to datasplit
+    val_k_dim: 2                       # dimension 'K', has to limit to 2 due to datasplit
 
 dataset:
   image_size:                 [128, 128]
