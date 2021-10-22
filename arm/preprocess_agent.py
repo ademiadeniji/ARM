@@ -6,6 +6,7 @@ from yarr.agents.agent import Agent, Summary, ActResult, \
     ScalarSummary, HistogramSummary, ImageSummary
 from einops import rearrange, reduce
 import logging
+from arm import utils 
 
 class PreprocessAgent(Agent):
 
@@ -28,6 +29,10 @@ class PreprocessAgent(Agent):
     def _norm_rgb_(self, x):
         return (x.float() / 255.0) * 2.0 - 1.0
 
+    def visualize_batch(self, step, replay_sample):
+
+        utils.visualize_batch(replay_sample, filename=f'/home/mandi/ARM/debug/replay_batch_step{step}', img_size=128)
+
     def update(self, step: int, replay_sample: dict) -> dict:
         # Samples are (N, K, ...) where we sample N buffers for each batch and get K transitions from each buffer
         #for k, v in replay_sample.items():
@@ -44,6 +49,17 @@ class PreprocessAgent(Agent):
         pose_dict = self._pose_agent.update(step, replay_sample)
          
         return pose_dict
+
+    def update_context_via_qagent(self, step: int, replay_sample: dict):
+        for k, v in replay_sample.items():
+            if 'rgb' in k:
+                replay_sample[k] = self._norm_rgb_(v) 
+        self._replay_sample = {k: rearrange(v, 'n k ... -> (n k) ...') for k, v in replay_sample.items()} # the stack agent does another reshape, here is just for logging purpose 
+        for k, v in replay_sample.items():
+            if isinstance(v, torch.Tensor):
+                replay_sample[k] = v.to(self._device) 
+        return self._pose_agent.update_context_only(step, replay_sample)
+
 
     def update_context(self, step: int, context_batch: dict) -> dict:
         self._context_batch = context_batch 

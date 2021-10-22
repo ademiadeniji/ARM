@@ -210,15 +210,15 @@ def visualize_batch(replay_sample, filename='one_batch', img_size=128):
             continue 
         if 'rgb' in key:
             print('Generating image for:', key, v.shape)
-            b, k, ch, img_h, img_w = v.shape # k should be 1
+            b, k, _, ch, img_h, img_w = v.shape # k should be 1
             nrows = b
             ncols = k 
             fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(ncols*4, nrows*4))
             for i in range(b):
                 for j in range(k):
-                    img = v[i,j].cpu().numpy()
+                    img = v[i,j,0].cpu().numpy()
                     #img = img.cpu().numpy() * STD + MEAN
-                    img = (img + 1.0) / 2.0  # diff normalization scheme rip
+                    # img = (img + 1.0) / 2.0  # diff normalization scheme rip
                     assert len(img.shape) == 3, f'Got image shape: {img.shape}'
                     row, col = i, j 
                     ax = axs[row, col] if ncols > 1 else axs[row]
@@ -229,13 +229,13 @@ def visualize_batch(replay_sample, filename='one_batch', img_size=128):
 
         if 'demo_sample' in key:
             print('Generating image for:', key, v.shape)
-            b, n, ch, img_h, img_w = v.shape # k should be 1
+            b, k, n, ch, img_h, img_w = v.shape # k should be 1
             nrows = b
-            ncols = n 
+            ncols = k 
             fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(ncols*4, nrows*4))
             for i in range(b):
-                for j in range(n):
-                    img = v[i,j]#.cpu().numpy()
+                for j in range(k):
+                    img = v[i,j,-1]#.cpu().numpy() # takes last frame in demo vid
                     img = img.cpu().numpy() * STD + MEAN
                     #img = (img + 1.0) / 2.0  # diff normalization scheme rip
                     assert len(img.shape) == 3, f'Got image shape: {img.shape}'

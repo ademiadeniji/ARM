@@ -66,7 +66,7 @@ dev:
     qagent_update_context: True
     qagent_use_emb_loss: True # for ablation set to False 
     one_hot: False 
-    encode_context: False  # if one-hot, prolly ok not to encode
+    encode_context: True  # if one-hot, prolly ok not to encode
     qnet_context_latent_size: 16
     cat_down1: False
     cat_down2: False
@@ -86,25 +86,26 @@ contexts:
   update_freq: 100000  # as compared to agent update
   pass_down_context: True 
   pretrain_context_steps: 0 
+  pretrain_replay_steps: 0 # use replay batch to update context
   agent:
     with_action_context: False
     is_train: True
     embedding_size: 16
     query_ratio: 0.3 # takes this much out of the total K samples 
-    margin:     0.1
+    margin:     0.01
     emb_lambda: 1.0
     save_context: False 
     loss_mode:  'hinge' 
     prod_of_gaus_factors_over_batch: False # for PEARL 
     encoder_cfg: ${encoder}
-    replay_update: False 
+    replay_update: True
     single_embedding_replay: True # if False, draw equal amount of embeddings from context 
   sampler:
     batch_dim:             ${replay.buffers_per_batch}   # dimension 'B' -> this has to match num of buffers
     k_dim:                 ${replay.batch_size}      # dimension 'K'     -> this doesnt 
     drop_last:             True 
     sample_mode:           'variation' # or 'variation'
-    val_batch_dim:             10      # actually let's fix this for all sweeping runs to get a fair comparision 
+    val_batch_dim:         10          # actually let's fix this for all sweeping runs to get a fair comparision 
     val_k_dim: 2                       # dimension 'K', has to limit to 2 due to datasplit
 
 dataset:

@@ -142,8 +142,7 @@ class ContextAgent(Agent):
             action_embeddings = embeddings[:, idxs]
         # print('shapes of action embeddings vs embeddings:', action_embeddings.shape, embeddings.shape)
         act_result = ActResult(action_embeddings, info={})
-        if self._replay_update:
-            
+        if self._replay_update: 
             # self._optimizer.zero_grad()
             if self._loss_mode == 'hinge':
                 update_dict = self._compute_hinge_loss(embeddings, val=False)  
@@ -296,7 +295,7 @@ class ContextAgent(Agent):
         b, k, d = embeddings.shape 
         embeddings_norm = embeddings / embeddings.norm(dim=2, p=2, keepdim=True)
 
-        num_query = 1 if val else int(self._query_ratio * k) # ugly hack cuz not enough validation data 
+        num_query = 1 if val else max(1, int(self._query_ratio * k)) # ugly hack cuz not enough validation data 
         num_support = int(k - num_query)
  
         # support_embeddings = embeddings_norm[:, num_support:]
@@ -356,9 +355,7 @@ class ContextAgent(Agent):
         support_context = support_context / support_context.norm(dim=1, p=2, keepdim=True) # B, d
         similarities = support_context.matmul(query_embeddings.transpose(0, 1))
         similarities = similarities.view(b, b, num_query)  # (B, B, queries)
-
-
-    
+  
     def update_train_summaries(self) -> List[Summary]:
         summaries = []
         if self._one_hot:

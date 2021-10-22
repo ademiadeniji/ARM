@@ -173,6 +173,17 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
             'var_prio': var_priorities  ** REPLAY_ALPHA,
         }
 
+    def update_context_only(self, step: int, replay_sample: dict) -> dict:
+        """ Only uses the QAttentionAgent's Optimizer to step hinge loss """
+        act_result = self._context_agent.act_for_replay(step, replay_sample)
+        qagent = self._qattention_agents[0]
+        emb_loss = act_result.info.get('emb_loss', None).to(qagent._device).mean()
+        qagent._optimizer.zero_grad()
+        emb_loss.backward()
+        qagent._optimizer.step()
+        return self._context_agent._replay_summaries
+         
+
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:
         """Context agent acts first """

@@ -380,7 +380,7 @@ def main(cfg: DictConfig) -> None:
     all_task_ids = [ i for i in range(len(all_tasks)) ]
 
     tasks_name = "-".join(cfg.tasks) + f"-{var_count}var"
-    if len(cfg.tasks) > 3:
+    if len(cfg.tasks) > 2:
         tasks_name = f'{len(cfg.tasks)}Task-{var_count}var' 
         logging.info(f'Got {len(cfg.tasks)} tasks, re-naming the run as: {tasks_name}')
     cfg.tasks_name = tasks_name

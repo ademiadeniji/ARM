@@ -392,7 +392,7 @@ class QAttentionContextAgent(Agent):
         total_loss = combined_delta + qreg_loss 
         
         total_loss = (total_loss * loss_weights).mean()
-        if self._layer == 0 and self._use_emb_loss: # otherwise, Replay batch still updates context embedder, BUT not using hinge loss : 
+        if self._layer == 0 and self._use_emb_loss: # otherwise, Replay batch still updates context embedder, BUT not using hinge loss 
             total_loss += (emb_loss).mean()
 
         self._optimizer.zero_grad()
