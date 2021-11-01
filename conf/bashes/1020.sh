@@ -285,7 +285,7 @@
         K_dim=16 
         RATIO=3
         CPUS=0-16
-        for MAR in 1e-2 3e-2 5e-2  
+        for MAR in 3e-2 5e-2  
         do 
         RUN=10VarEach-Margin${MAR}-Emb_lr${E_LR}_K${K_dim}_Emd4-Pretrain2k
         taskset -c $CPUS python launch_context.py run_name=${RUN} \
@@ -297,37 +297,18 @@
         framework.replay_ratio=${RATIO} framework.log_all_vars=False \
         framework.switch_online_tasks=1  rlbench.num_vars=10  \
         contexts.agent.embedding_size=1 \
-        contexts.pretrain_replay_steps=2000 framework.training_iterations=3000 contexts.agent.margin=${MAR}
-        done
-
-        Query_ratio=0.3
-        E_LR=1e-3
-        K_dim=8 
-        RATIO=3
-        CPUS=16-32
-        for MAR in 1e-2 3e-2 5e-2  
-        do 
-        RUN=10VarEach-Margin${MAR}-Emb_lr${E_LR}_K${K_dim}_Emd4-Pretrain2k
-        taskset -c $CPUS python launch_context.py run_name=${RUN} \
-        tasks=['pick_up_cup','pick_and_lift','reach_target'] rlbench.num_vars=10  \
-        replay.batch_size=10 replay.buffers_per_batch=6 replay.share_across_tasks=False \
-        dev.encode_context=True contexts.pass_down_context=True   \
-        contexts.agent.replay_update=True dev.qagent_update_context=True contexts.agent.query_ratio=${Query_ratio}  \
-        method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
-        framework.replay_ratio=${RATIO} framework.log_all_vars=False \
-        framework.switch_online_tasks=1  rlbench.num_vars=10  \
-        contexts.agent.embedding_size=1 \
-        contexts.pretrain_replay_steps=2000 framework.training_iterations=3000 contexts.agent.margin=${MAR}
+        contexts.pretrain_replay_steps=2000 framework.training_iterations=3000 \
+        contexts.agent.margin=${MAR} 
         done
 
         Query_ratio=0.3
         E_LR=5e-4
-        K_dim=8
+        K_dim=16 
         RATIO=3
-        CPUS=32-48
-        for MAR in 1e-2 3e-2 5e-2  
+        CPUS=16-32
+        for MAR in 3e-2 5e-2  
         do 
-        RUN=10VarEach-Margin${MAR}-Emb_lr${E_LR}_K${K_dim}_Emd8-Pretrain2k
+        RUN=10VarEach-Margin${MAR}-Emb_lr${E_LR}_K${K_dim}_Emd4-Pretrain2k-NoQEncode
         taskset -c $CPUS python launch_context.py run_name=${RUN} \
         tasks=['pick_up_cup','pick_and_lift','reach_target'] rlbench.num_vars=10  \
         replay.batch_size=10 replay.buffers_per_batch=6 replay.share_across_tasks=False \
@@ -336,8 +317,30 @@
         method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
         framework.replay_ratio=${RATIO} framework.log_all_vars=False \
         framework.switch_online_tasks=1  rlbench.num_vars=10  \
-        contexts.agent.embedding_size=2 \
-        contexts.pretrain_replay_steps=2000 framework.training_iterations=3000 contexts.agent.margin=${MAR}
+        contexts.agent.embedding_size=1 \
+        contexts.pretrain_replay_steps=2000 framework.training_iterations=3000 \
+        contexts.agent.margin=${MAR} dev.encode_context=False 
+        done
+
+        Query_ratio=0.3
+        E_LR=5e-4
+        K_dim=16 
+        RATIO=3
+        CPUS=32-48
+        for MAR in 3e-2 5e-2  
+        do 
+        RUN=10VarEach-Margin${MAR}-Emb_lr${E_LR}_K${K_dim}_Emd4-Pretrain2k-Encode8
+        taskset -c $CPUS python launch_context.py run_name=${RUN} \
+        tasks=['pick_up_cup','pick_and_lift','reach_target'] rlbench.num_vars=10  \
+        replay.batch_size=10 replay.buffers_per_batch=6 replay.share_across_tasks=False \
+        dev.encode_context=True contexts.pass_down_context=True   \
+        contexts.agent.replay_update=True dev.qagent_update_context=True contexts.agent.query_ratio=${Query_ratio}  \
+        method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+        framework.replay_ratio=${RATIO} framework.log_all_vars=False \
+        framework.switch_online_tasks=1  rlbench.num_vars=10  \
+        contexts.agent.embedding_size=1 \
+        contexts.pretrain_replay_steps=2000 framework.training_iterations=3000 \
+        contexts.agent.margin=${MAR} dev.encode_context=True dev.qnet_context_latent_size=8
         done
  
         # debug 
@@ -347,4 +350,148 @@
         contexts.agent.replay_update=True  contexts.agent.embedding_size=2 \
         dev.offline=True framework.wandb_logging=False 
 
-    # ti5: increase b_dim, keep pre-train 
+    # ti5: increase b_dim, keep pre-train
+        Query_ratio=0.3 
+        MAR=5e-2
+        K_dim=6
+        B=10
+        for E_LR in 3e-4 5e-4
+        do 
+        RUN=10VarEach-Margin${MAR}-Emb_lr${E_LR}_K${K_dim}_Emd8-Pretrain2k-QEncode8-NoActionLoss
+            taskset -c $CPUS python launch_context.py run_name=${RUN} \
+            tasks=['pick_up_cup','pick_and_lift','reach_target'] rlbench.num_vars=10  \
+            replay.batch_size=${B} replay.buffers_per_batch=6 replay.share_across_tasks=False \
+            dev.encode_context=True contexts.pass_down_context=True   \
+            contexts.agent.replay_update=True dev.qagent_update_context=True contexts.agent.query_ratio=${Query_ratio}  \
+            method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+            framework.replay_ratio=3  rlbench.demo_path=/shared/mandi/all_rlbench_data  \
+            contexts.agent.embedding_size=2 \
+            contexts.pretrain_replay_steps=2000 framework.training_iterations=3000 \
+            contexts.agent.margin=${MAR} dev.qagent_update_context=False dev.qnet_context_latent_size=8 
+
+        done
+
+        Query_ratio=0.3 
+        MAR=5e-2
+        K_dim=6
+        B=10
+        for E_LR in 3e-4 5e-4
+        do 
+        RUN=10VarEach-Margin${MAR}-Emb_lr${E_LR}_K${K_dim}_Emd8-Pretrain2k-QEncode8-NoActionLoss
+            taskset -c $CPUS python launch_context.py run_name=${RUN} \
+            tasks=['pick_up_cup','pick_and_lift','reach_target'] rlbench.num_vars=10  \
+            replay.batch_size=${B} replay.buffers_per_batch=6 replay.share_across_tasks=False \
+            dev.encode_context=True contexts.pass_down_context=True   \
+            contexts.agent.replay_update=True contexts.agent.query_ratio=${Query_ratio}  \
+            method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+            framework.replay_ratio=3  rlbench.demo_path=/shared/mandi/all_rlbench_data  \
+            contexts.agent.embedding_size=2 \
+            contexts.pretrain_replay_steps=2000 framework.training_iterations=3000 \
+            contexts.agent.margin=${MAR} dev.qagent_update_context=False dev.qnet_context_latent_size=8  
+
+        done 
+
+    # rtxs1: pre-train and no action loss afterwards 
+        Query_ratio=0.3 
+        MAR=3e-2
+        K_dim=6
+        B=10
+        for E_LR in 3e-4 5e-4
+        do 
+        RUN=10VarEach-Margin${MAR}-Emb_lr${E_LR}_K${K_dim}_Emd8-Pretrain2k-NoQEncode-NoActionLoss
+            taskset -c $CPUS python launch_context.py run_name=${RUN} \
+            tasks=['pick_up_cup','pick_and_lift','reach_target'] rlbench.num_vars=10  \
+            replay.batch_size=${B} replay.buffers_per_batch=6 replay.share_across_tasks=False \
+            dev.encode_context=True contexts.pass_down_context=True   \
+            contexts.agent.replay_update=True dev.qagent_update_context=True contexts.agent.query_ratio=${Query_ratio}  \
+            method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+            framework.replay_ratio=3  rlbench.demo_path=/shared/mandi/all_rlbench_data  \
+            contexts.agent.embedding_size=2 \
+            contexts.pretrain_replay_steps=2000 framework.training_iterations=3000 \
+            contexts.agent.margin=${MAR} dev.qagent_update_context=False dev.encode_context=False 
+
+        done 
+
+        Query_ratio=0.3 
+        MAR=5e-2
+        K_dim=6
+        B=10
+        for E_LR in 3e-4 5e-4
+        do 
+        RUN=10VarEach-Margin${MAR}-Emb_lr${E_LR}_K${K_dim}_Emd8-Pretrain2k-NoQEncode-NoActionLoss
+            taskset -c $CPUS python launch_context.py run_name=${RUN} \
+            tasks=['pick_up_cup','pick_and_lift','reach_target'] rlbench.num_vars=10  \
+            replay.batch_size=${B} replay.buffers_per_batch=6 replay.share_across_tasks=False \
+            dev.encode_context=True contexts.pass_down_context=True   \
+            contexts.agent.replay_update=True dev.qagent_update_context=True contexts.agent.query_ratio=${Query_ratio}  \
+            method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+            framework.replay_ratio=3  rlbench.demo_path=/shared/mandi/all_rlbench_data  \
+            contexts.agent.embedding_size=2 \
+            contexts.pretrain_replay_steps=2000 framework.training_iterations=3000 \
+            contexts.agent.margin=${MAR} dev.qagent_update_context=False dev.encode_context=False 
+
+        done
+
+        # amd2: no pre-train, new hyparams
+        CPUS=0-60
+        Query_ratio=0.3 
+        MAR=5e-2
+        K_dim=6
+        B=10
+        for E_LR in 3e-4 5e-4
+        do 
+        RUN=10VarEach-Margin${MAR}-Emb_lr${E_LR}_K${K_dim}_Emd8-NoQEncode
+            taskset -c $CPUS python launch_context.py run_name=${RUN} \
+            tasks=['pick_up_cup','pick_and_lift','reach_target'] rlbench.num_vars=10  \
+            replay.batch_size=${B} replay.buffers_per_batch=6 replay.share_across_tasks=False \
+            dev.encode_context=True contexts.pass_down_context=True   \
+            contexts.agent.replay_update=True dev.qagent_update_context=True contexts.agent.query_ratio=${Query_ratio}  \
+            method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+            framework.replay_ratio=3  rlbench.demo_path=/shared/mandi/all_rlbench_data  \
+            contexts.agent.embedding_size=2 \
+            framework.training_iterations=5000 \
+            contexts.agent.margin=${MAR} dev.encode_context=False 
+
+        done
+
+        CPUS=60-120
+        Query_ratio=0.3 
+        MAR=5e-2
+        K_dim=6
+        B=10
+        for E_LR in 3e-4 5e-4
+        do 
+        RUN=10VarEach-Margin${MAR}-Emb_lr${E_LR}_K${K_dim}_Emd8-NoQEncode-NoActionLoss
+            taskset -c $CPUS python launch_context.py run_name=${RUN} \
+            tasks=['pick_up_cup','pick_and_lift','reach_target'] rlbench.num_vars=10  \
+            replay.batch_size=${B} replay.buffers_per_batch=6 replay.share_across_tasks=False \
+            dev.encode_context=True contexts.pass_down_context=True   \
+            contexts.agent.replay_update=True dev.qagent_update_context=True contexts.agent.query_ratio=${Query_ratio}  \
+            method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+            framework.replay_ratio=3  rlbench.demo_path=/shared/mandi/all_rlbench_data  \
+            contexts.agent.embedding_size=2 \
+            framework.training_iterations=5000 \
+            contexts.agent.margin=${MAR} dev.qagent_update_context=False dev.encode_context=False 
+
+        done
+
+        # amd3: emd4
+        Query_ratio=0.3 
+        MAR=5e-2
+        K_dim=6
+        B=10
+        for E_LR in 3e-4 5e-4
+        do 
+        RUN=10VarEach-Margin${MAR}-Emb_lr${E_LR}_K${K_dim}_Emd4-QEncode4
+            taskset -c $CPUS python launch_context.py run_name=${RUN} \
+            tasks=['pick_up_cup','pick_and_lift','reach_target'] rlbench.num_vars=10  \
+            replay.batch_size=${B} replay.buffers_per_batch=6 replay.share_across_tasks=False \
+            dev.encode_context=True contexts.pass_down_context=True   \
+            contexts.agent.replay_update=True dev.qagent_update_context=True contexts.agent.query_ratio=${Query_ratio}  \
+            method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+            framework.replay_ratio=3  rlbench.demo_path=/shared/mandi/all_rlbench_data  \
+            contexts.agent.embedding_size=1 \
+            framework.training_iterations=5000 \
+            contexts.agent.margin=${MAR} dev.encode_context=False dev.qnet_context_latent_size=4
+
+        done

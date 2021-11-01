@@ -42,14 +42,33 @@ class QAttentionStackAgent(Agent):
             qa.build(training, device)
 
     def update(self, step: int, replay_sample: dict) -> dict:
+        # priorities = 0
+        # for qa in self._qattention_agents:
+        #     update_dict = qa.update(step, replay_sample)
+        #     priorities += update_dict['priority']
+        #     replay_sample.update(update_dict)
+        # return {
+        #     'priority': (priorities) ** REPLAY_ALPHA,
+        # }
+        # Samples are (B, K, ...) where we sample B buffers for each batch and get K transitions from each buffer
+        # note this K could be different between context part and obs part 
+        replay_sample = {k: rearrange(v, 'b k ... -> (b k) ... ') for k, v in replay_sample.items()}
+
         priorities = 0
+        task_priorities, var_priorities = 0, 0 
         for qa in self._qattention_agents:
+            #print('\n Updating qa layer: ', qa._layer)
             update_dict = qa.update(step, replay_sample)
             priorities += update_dict['priority']
+            task_priorities += update_dict['task_prio']
+            var_priorities += update_dict['var_prio']
             replay_sample.update(update_dict)
         return {
             'priority': (priorities) ** REPLAY_ALPHA,
+            'task_prio': task_priorities  ** REPLAY_ALPHA,
+            'var_prio': var_priorities  ** REPLAY_ALPHA,
         }
+
 
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:
@@ -145,12 +164,10 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
             one layer to another"""
         # utils.visualize_batch(replay_sample, filename='/home/mandi/ARM/debug/one_batch', img_size=128)
         # raise ValueError
-        act_result = self._context_agent.act_for_replay(step, replay_sample)
+        act_result = self._context_agent.act_for_replay(step, replay_sample, output_loss=self._qattention_agents[0]._use_emb_loss)
         replay_sample['prev_layer_encoded_context'] = act_result.action.to(self._device)
-        emb_loss = act_result.info.get('emb_loss', None)
-        if emb_loss is not None:
-            emb_loss = emb_loss.to(self._device) 
-        replay_sample['emb_loss'] = emb_loss
+        if act_result.info.get('emb_loss', None) is not None:
+            replay_sample['emb_loss'] = act_result.info.get('emb_loss')
 
         # Samples are (B, K, ...) where we sample B buffers for each batch and get K transitions from each buffer
         # note this K could be different between context part and obs part 
@@ -175,7 +192,7 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
 
     def update_context_only(self, step: int, replay_sample: dict) -> dict:
         """ Only uses the QAttentionAgent's Optimizer to step hinge loss """
-        act_result = self._context_agent.act_for_replay(step, replay_sample)
+        act_result = self._context_agent.act_for_replay(step, replay_sample, output_loss=True)
         qagent = self._qattention_agents[0]
         emb_loss = act_result.info.get('emb_loss', None).to(qagent._device).mean()
         qagent._optimizer.zero_grad()

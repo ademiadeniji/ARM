@@ -21,7 +21,7 @@ rlbench:
     num_vars: -1 
 
 replay:
-    batch_size: 64 # total buff size, no task-aggregate anymore 
+    batch_size: 10 # total buff size, no task-aggregate anymore 
     total_batch_size: 10000
     timesteps: 1
     prioritisation: True
@@ -30,7 +30,7 @@ replay:
     share_across_tasks: False  
     replay_size: 100000 # total size 
     update_buffer_prio: True 
-    buffers_per_batch: 20
+    buffers_per_batch: 6
 
 framework:
     log_freq:  100 # set to bigger to not save so many media files 
@@ -82,7 +82,7 @@ dev:
 
 contexts:
   num_update_itrs: 5
-  val_freq:   100
+  val_freq:   -1
   update_freq: 100000  # as compared to agent update
   pass_down_context: True 
   pretrain_context_steps: 0 

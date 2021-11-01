@@ -14,6 +14,7 @@ from yarr.agents.agent import Agent, ActResult, ScalarSummary, \
 from arm import utils
 from arm.utils import visualise_voxel, stack_on_channel
 from arm.c2farm.voxel_grid import VoxelGrid
+from yarr.utils.multitask_rollout_generator import TASK_ID, VAR_ID
 
 NAME = 'QAttentionAgent'
 REPLAY_BETA = 1.0
@@ -373,8 +374,21 @@ class QAttentionAgent(Agent):
         priority /= priority.max()
         prev_priority = replay_sample.get('priority', 0)
 
+        task_ids, variation_ids = replay_sample[TASK_ID], replay_sample[VAR_ID]
+        task_masks = [ (task_ids == j) for j in task_ids  ]
+        task_prio = torch.stack(
+            [torch.mean(torch.masked_select(priority, msk)) for msk in task_masks])
+        task_prio += replay_sample.get('task_prio', 0)
+
+        var_masks = [ (variation_ids == j) for j in variation_ids ]
+        var_prio = torch.stack(
+            [torch.mean(torch.masked_select(priority, msk)) for msk in var_masks])
+        var_prio += replay_sample.get('var_prio', 0)
+
         return {
             'priority': priority + prev_priority,
+            'task_prio': task_prio,
+            'var_prio': var_prio,
             'prev_layer_voxel_grid': voxel_grid,
             'prev_layer_voxel_grid_tp1': voxel_grid_tp1,
         }
@@ -456,18 +470,18 @@ class QAttentionAgent(Agent):
             summaries.extend([
                 ImageSummary('%s/crops/%s' % (self._name, name), crops)])
 
-        for tag, param in self._q.named_parameters():
-            assert not torch.isnan(param.grad.abs() <= 1.0).all()
-            summaries.append(
-                HistogramSummary('%s/gradient/%s' % (self._name, tag),
-                                 param.grad))
-            summaries.append(
-                HistogramSummary('%s/weight/%s' % (self._name, tag),
-                                 param.data))
+        # for tag, param in self._q.named_parameters():
+        #     assert not torch.isnan(param.grad.abs() <= 1.0).all()
+        #     summaries.append(
+        #         HistogramSummary('%s/gradient/%s' % (self._name, tag),
+        #                          param.grad))
+        #     summaries.append(
+        #         HistogramSummary('%s/weight/%s' % (self._name, tag),
+        #                          param.data))
 
-        for name, t in self._q.latents().items():
-            summaries.append(
-                HistogramSummary('%s/activations/%s' % (self._name, name), t))
+        # for name, t in self._q.latents().items():
+        #     summaries.append(
+        #         HistogramSummary('%s/activations/%s' % (self._name, name), t))
 
         return summaries
 

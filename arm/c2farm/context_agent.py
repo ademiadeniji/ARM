@@ -119,7 +119,7 @@ class ContextAgent(Agent):
             self._optimizer, self._optim_params = make_optimizer(
                 self._embedding_net, self._encoder_cfg, return_params=True)
  
-    def act_for_replay(self, step, replay_sample):
+    def act_for_replay(self, step, replay_sample, output_loss=False):
         """Use this to embed context only for qattention agent update"""
         data = replay_sample[CONTEXT_KEY].to(self._device) 
         if self._one_hot:
@@ -142,7 +142,7 @@ class ContextAgent(Agent):
             action_embeddings = embeddings[:, idxs]
         # print('shapes of action embeddings vs embeddings:', action_embeddings.shape, embeddings.shape)
         act_result = ActResult(action_embeddings, info={})
-        if self._replay_update: 
+        if self._replay_update and output_loss: 
             # self._optimizer.zero_grad()
             if self._loss_mode == 'hinge':
                 update_dict = self._compute_hinge_loss(embeddings, val=False)  

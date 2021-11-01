@@ -308,12 +308,15 @@ class QAttentionContextAgent(Agent):
         # still, later layers cannot update context embeder
         context = replay_sample['prev_layer_encoded_context'].to(self._device) 
         emb_loss = replay_sample.get('emb_loss',  None)
-        if emb_loss is not None:
+        if self._use_emb_loss:
+            assert emb_loss is not None, 'Context agent should also output loss'
             emb_loss = emb_loss.to(self._device) 
         
+        # assert not self._update_context_agent, 'Should make sure to detach context here!'
         if self._layer > 0:
             context = context.detach()
         elif not self._update_context_agent:
+            # check if this is being executed, should be detached()
             context = context.detach() # NOTE: this means only emb_loss affects embnet params, no td error 
         action_trans = replay_sample['trans_action_indicies'][:, -1,
                        self._layer * 3:self._layer * 3 + 3]
@@ -334,7 +337,6 @@ class QAttentionContextAgent(Agent):
                 [cp_tp1 - self._bounds_offset, cp_tp1 + self._bounds_offset],
                 dim=1)
             
-
         proprio = proprio_tp1 = None
         if self._include_low_dim_state:
             proprio = stack_on_channel(replay_sample['low_dim_state'])
@@ -394,9 +396,10 @@ class QAttentionContextAgent(Agent):
         total_loss = (total_loss * loss_weights).mean()
         if self._layer == 0 and self._use_emb_loss: # otherwise, Replay batch still updates context embedder, BUT not using hinge loss 
             total_loss += (emb_loss).mean()
-
+        # DEBUG
         self._optimizer.zero_grad()
         total_loss.backward()
+        # (emb_loss).mean().backward()
         if self._grad_clip is not None:
             nn.utils.clip_grad_value_(self._q.parameters(), self._grad_clip)
         self._optimizer.step()
@@ -537,18 +540,18 @@ class QAttentionContextAgent(Agent):
             summaries.extend([
                 ImageSummary('%s/crops/%s' % (self._name, name), crops)])
 
-        for tag, param in self._q.named_parameters():
-            assert not torch.isnan(param.grad.abs() <= 1.0).all()
-            summaries.append(
-                HistogramSummary('%s/gradient/%s' % (self._name, tag),
-                                 param.grad))
-            summaries.append(
-                HistogramSummary('%s/weight/%s' % (self._name, tag),
-                                 param.data))
+        # for tag, param in self._q.named_parameters():
+        #     assert not torch.isnan(param.grad.abs() <= 1.0).all()
+        #     summaries.append(
+        #         HistogramSummary('%s/gradient/%s' % (self._name, tag),
+        #                          param.grad))
+        #     summaries.append(
+        #         HistogramSummary('%s/weight/%s' % (self._name, tag),
+        #                          param.data))
 
-        for name, t in self._q.latents().items():
-            summaries.append(
-                HistogramSummary('%s/activations/%s' % (self._name, name), t))
+        # for name, t in self._q.latents().items():
+        #     summaries.append(
+        #         HistogramSummary('%s/activations/%s' % (self._name, name), t))
 
         return summaries
 
