@@ -129,6 +129,7 @@ class QAttentionContextAgent(Agent):
                  update_context_agent: bool = True,
                  pass_down_context: bool = True,
                  use_emb_loss: bool = True, 
+                 emb_weight: float = 1.0,
                  ):
         self._layer = layer
         self._lambda_trans_qreg = lambda_trans_qreg
@@ -162,7 +163,8 @@ class QAttentionContextAgent(Agent):
         self._update_context_agent = update_context_agent
         self._pass_down_context = pass_down_context
         self._use_emb_loss = use_emb_loss
-
+        self._emb_weight = emb_weight 
+        
     def build(self, training: bool, device: torch.device = None):
         if device is None:
             device = torch.device('cpu')
@@ -195,14 +197,23 @@ class QAttentionContextAgent(Agent):
             for e in emb_params:
                 e.update({'lr': self._emb_lr})
             # if self._update_context_agent: # NOTE: always add params here, doesn't have to affect 
-            q_params = [{"params": q_params, 'lr': self._lr}] + emb_params
+            q_params = [{"params": q_params, 'lr': self._lr}] 
+            if self._layer == 0:
+                q_params += emb_params # Only allow update here!
             self._optimizer = torch.optim.Adam(
                 q_params, lr=self._lr,
                 weight_decay=self._lambda_weight_l2)
-
             logging.info('# Q Params: %d' % sum(
                 p.numel() for p in self._q.parameters() if p.requires_grad))
-            logging.info(f"Also updating context embedder?: {self._update_context_agent}")
+
+            # if self._layer == 0:
+            #     self._emb_optimizer = torch.optim.Adam(
+            #         self._context_agent._optim_params, lr=self._emb_lr,
+            #         weight_decay=self._lambda_weight_l2)
+                # logging.info('# Emb params: %d' % sum(
+                #     p.numel() for key, p in self._context_agent._optim_params.items() if p.requires_grad))
+
+            logging.info(f"Use action loss to update context embedder?: {self._update_context_agent}")
         else:
             for param in self._q.parameters():
                 param.requires_grad = False
@@ -310,14 +321,14 @@ class QAttentionContextAgent(Agent):
         emb_loss = replay_sample.get('emb_loss',  None)
         if self._use_emb_loss:
             assert emb_loss is not None, 'Context agent should also output loss'
-            emb_loss = emb_loss.to(self._device) 
+            emb_loss = emb_loss.mean().to(self._device) 
+
         
         # assert not self._update_context_agent, 'Should make sure to detach context here!'
-        if self._layer > 0:
-            context = context.detach()
-        elif not self._update_context_agent:
+        if self._layer > 0 or (not self._update_context_agent):
             # check if this is being executed, should be detached()
-            context = context.detach() # NOTE: this means only emb_loss affects embnet params, no td error 
+            context = context.detach() # NOTE: this means only emb_loss affects embnet params, no action loss 
+            context = context.clone().detach()
         action_trans = replay_sample['trans_action_indicies'][:, -1,
                        self._layer * 3:self._layer * 3 + 3]
         action_rot_grip = replay_sample['rot_grip_action_indicies'][:, -1].long()
@@ -393,9 +404,9 @@ class QAttentionContextAgent(Agent):
         combined_delta = q_delta.mean(1)
         total_loss = combined_delta + qreg_loss 
         
-        total_loss = (total_loss * loss_weights).mean()
+        total_loss = (total_loss * loss_weights).mean()  
         if self._layer == 0 and self._use_emb_loss: # otherwise, Replay batch still updates context embedder, BUT not using hinge loss 
-            total_loss += (emb_loss).mean()
+            total_loss += (emb_loss).mean() * self._emb_weight 
         # DEBUG
         self._optimizer.zero_grad()
         total_loss.backward()
@@ -403,6 +414,16 @@ class QAttentionContextAgent(Agent):
         if self._grad_clip is not None:
             nn.utils.clip_grad_value_(self._q.parameters(), self._grad_clip)
         self._optimizer.step()
+        # # DEBUG: step here again!
+        # if self._layer == 0:
+        #     self._emb_optimizer.zero_grad()
+        #     if self._update_context_agent:
+        #         emb_loss += total_loss
+        #     emb_loss.backward()
+        #     self._emb_optimizer.step()
+        #     self._optimizer.zero_grad()
+        #     emb_loss = (emb_loss).mean()
+        #     self._optimizer.step()
 
         self._summaries = {
             'q/mean_qattention': q.mean(),

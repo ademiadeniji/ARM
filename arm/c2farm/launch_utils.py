@@ -336,7 +336,8 @@ def create_agent_with_context(cfg: DictConfig, env,
 
     num_rotation_classes = int(360. // cfg.method.rotation_resolution)
     qattention_agents = []
-    ctxt_size = sum([len(variations) for variations in cfg.rlbench.all_variations]) if cfg.dev.one_hot else CONTEXT_SIZE
+    ctxt_size = sum([len(variations) for variations in cfg.rlbench.all_variations]) if cfg.dev.one_hot else \
+        cfg.contexts.agent.embedding_size * 4 
     for depth, vox_size in enumerate(cfg.method.voxel_sizes):
         if depth == 0:
             unet3d = Qattention3DNetWithContext(
@@ -400,6 +401,7 @@ def create_agent_with_context(cfg: DictConfig, env,
             update_context_agent=(cfg.dev.qagent_update_context and depth == 0),
             pass_down_context=cfg.contexts.pass_down_context,
             use_emb_loss=cfg.dev.qagent_use_emb_loss, 
+            emb_weight=cfg.contexts.emb_weight,
         )
         qattention_agents.append(qattention_agent)
 

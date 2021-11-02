@@ -87,10 +87,11 @@ contexts:
   pass_down_context: True 
   pretrain_context_steps: 0 
   pretrain_replay_steps: 0 # use replay batch to update context
+  emb_weight: 1.0
   agent:
     with_action_context: False
     is_train: True
-    embedding_size: 16
+    embedding_size: ${encoder.MODEL.OUT_DIM}
     query_ratio: 0.3 # takes this much out of the total K samples 
     margin:     0.01
     emb_lambda: 1.0

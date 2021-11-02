@@ -73,7 +73,7 @@ class ContextAgent(Agent):
                  prod_of_gaus_factors_over_batch: bool = False, # for PEARL 
                  encoder_cfg: DictConfig = None,
                  one_hot: bool = False,
-                 replay_update: bool = False,   
+                 replay_update: bool = True, 
                  single_embedding_replay: bool = True,
                  ):
         self._embedding_net = embedding_net
@@ -154,10 +154,7 @@ class ContextAgent(Agent):
             act_result = ActResult(action_embeddings, info={'emb_loss': update_dict['emb_loss']})
             self._replay_summaries = {
                     'replay_batch/'+k: torch.mean(v) for k,v in update_dict.items()}
-            
-            # loss = update_dict['emb_loss']
-            # loss.backward(retain_graph=True)
-            # self._optimizer.step()
+             
 
         return act_result
         

@@ -118,6 +118,7 @@ class QAttentionStackAgent(Agent):
         summaries = []
         for qa in self._qattention_agents:
             summaries.extend(qa.update_summaries())
+            # break # DEBUG 
         return summaries
 
     def act_summaries(self) -> List[Summary]:
@@ -184,6 +185,7 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
             task_priorities += update_dict['task_prio']
             var_priorities += update_dict['var_prio']
             replay_sample.update(update_dict)
+            # break # DEBUG: only update 1st layer! 
         return {
             'priority': (priorities) ** REPLAY_ALPHA,
             'task_prio': task_priorities  ** REPLAY_ALPHA,
@@ -192,6 +194,7 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
 
     def update_context_only(self, step: int, replay_sample: dict) -> dict:
         """ Only uses the QAttentionAgent's Optimizer to step hinge loss """
+        raise ValueError # may need to change to using emb optimizer here 
         act_result = self._context_agent.act_for_replay(step, replay_sample, output_loss=True)
         qagent = self._qattention_agents[0]
         emb_loss = act_result.info.get('emb_loss', None).to(qagent._device).mean()
@@ -276,6 +279,7 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
                     summaries.append(summary)
             update_img.append(torch.cat(one_layer, dim=2))
             # input_img.append(np.concatenate(inputs, axis=2))
+            # break # DEBUG 
         summaries.extend([
             ImageSummary('update_qattention', torch.cat(update_img, dim=1)),
             #ImageSummary('inputs_qattention', np.concatenate(input_img, axis=1))
