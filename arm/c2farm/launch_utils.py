@@ -274,7 +274,7 @@ def create_agent(cfg: DictConfig, env, depth_0bounds=None, cam_resolution=None):
             lambda_rot_qreg=cfg.method.lambda_rot_qreg,
             include_low_dim_state=True,
             image_resolution=cam_resolution,
-            batch_size=cfg.replay.batch_size,
+            batch_size=cfg.replay.batch_size if cfg.replay.share_across_tasks else cfg.replay.total_batch_size,
             voxel_feature_size=3,
             exploration_strategy=cfg.method.exploration_strategy,
             lambda_weight_l2=cfg.method.lambda_weight_l2,
