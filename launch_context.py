@@ -297,6 +297,7 @@ def run_seed(
         eval_only=cfg.dev.eval_only,  
         switch_online_tasks=cfg.framework.switch_online_tasks,
         task_var_to_replay_idx=task_var_to_replay_idx,
+        dev_cfg=cfg.dev,
         )
  
     train_runner.start(resume_dir)

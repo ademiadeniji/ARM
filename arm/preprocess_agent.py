@@ -60,6 +60,13 @@ class PreprocessAgent(Agent):
                 replay_sample[k] = v.to(self._device) 
         return self._pose_agent.update_context_only(step, replay_sample)
 
+    def rebuild_optimizer(self):
+        agent = self._pose_agent._qattention_agents[0]
+        q_params = agent._q.parameters()
+        q_params = [{"params": q_params, 'lr': agent._lr}] 
+        agent._optimizer = torch.optim.Adam(q_params, lr=agent._lr,
+            weight_decay=agent._lambda_weight_l2)
+
 
     def update_context(self, step: int, context_batch: dict) -> dict:
         self._context_batch = context_batch 

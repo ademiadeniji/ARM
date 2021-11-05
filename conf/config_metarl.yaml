@@ -78,7 +78,8 @@ dev:
     # exclude similar colors: red, green,blue,yellow,cyan,gray,orange,violet,black,white
     # exclude gray and white: [0,3,4,6,7,11,16,18]
     offline: False 
-    eval_only: False 
+    eval_only: False
+    freeze_emb: False  
 
 contexts:
   num_update_itrs: 5

@@ -194,7 +194,7 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
 
     def update_context_only(self, step: int, replay_sample: dict) -> dict:
         """ Only uses the QAttentionAgent's Optimizer to step hinge loss """
-        raise ValueError # may need to change to using emb optimizer here 
+        # raise ValueError # may need to change to using emb optimizer here 
         act_result = self._context_agent.act_for_replay(step, replay_sample, output_loss=True)
         qagent = self._qattention_agents[0]
         emb_loss = act_result.info.get('emb_loss', None).to(qagent._device).mean()
