@@ -532,7 +532,7 @@ class QAttentionContextAgent(Agent):
         observation_elements = {
             'attention_coordinate': attention_coordinate,
             'prev_layer_voxel_grid': vox_grid,
-            'prev_layer_encoded_context': encoded_context,
+            'prev_layer_encoded_context': encoded_context if self._pass_down_context and encoded_context is not None else context,
         }
         info = {
             'voxel_grid_depth%d' % self._layer: vox_grid,
