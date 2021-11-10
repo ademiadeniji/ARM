@@ -14,7 +14,7 @@ from yarr.replay_buffer.uniform_replay_buffer import UniformReplayBuffer
 from arm import demo_loading_utils, utils
 from arm.custom_rlbench_env import CustomRLBenchEnv
 from arm.preprocess_agent import PreprocessAgent
-from arm.c2farm.networks import Qattention3DNet, Qattention3DNetWithContext
+from arm.c2farm.networks import Qattention3DNet, Qattention3DNetWithContext, Qattention3DNetWithFiLM
 from arm.c2farm.qattention_agent import QAttentionAgent
 from arm.c2farm.qattention_agent_with_context import QAttentionContextAgent
 from arm.c2farm.qattention_stack_agent import QAttentionStackAgent, QAttentionStackContextAgent
@@ -340,7 +340,23 @@ def create_agent_with_context(cfg: DictConfig, env,
         cfg.contexts.agent.embedding_size * 4 
     for depth, vox_size in enumerate(cfg.method.voxel_sizes):
         if depth == 0:
-            unet3d = Qattention3DNetWithContext(
+            if cfg.dev.use_film:
+                unet3d = Qattention3DNetWithFiLM(
+                    in_channels=VOXEL_FEATS + 3 + 1 + 3,
+                    out_channels=1,
+                    voxel_size=vox_size,
+                    out_dense=0,
+                    kernels=LATENT_SIZE,
+                    norm=None if 'None' in cfg.method.norm else cfg.method.norm,
+                    dense_feats=128,
+                    activation=cfg.method.activation,
+                    low_dim_size=env.low_dim_state_len,
+                    inp_context_size=ctxt_size, 
+                    use_context=True, 
+                    dev_cfgs=dict(cfg.dev),
+                )
+            else:
+                unet3d = Qattention3DNetWithContext(
                 in_channels=VOXEL_FEATS + 3 + 1 + 3,
                 out_channels=1,
                 voxel_size=vox_size,
@@ -356,23 +372,41 @@ def create_agent_with_context(cfg: DictConfig, env,
                 dev_cfgs=dict(cfg.dev),
                 )
         else:
-            last = depth == len(cfg.method.voxel_sizes) - 1
-            unet3d = Qattention3DNetWithContext(
-                in_channels=VOXEL_FEATS + 3 + 1 + 3,
-                out_channels=2,
-                voxel_size=vox_size,
-                out_dense=(num_rotation_classes * 3) if last else 0,
-                kernels=LATENT_SIZE,
-                dense_feats=128,
-                norm=None if 'None' in cfg.method.norm else cfg.method.norm,
-                activation=cfg.method.activation,
-                low_dim_size=env.low_dim_state_len,
-                include_prev_layer=include_prev_layer,
-                encode_context=cfg.dev.encode_context,
-                inp_context_size=cfg.dev.qnet_context_latent_size if (cfg.contexts.pass_down_context and cfg.dev.encode_context) else ctxt_size, #cfg.contexts.agent.embedding_size,
-                encode_context_size=cfg.dev.qnet_context_latent_size,
-                dev_cfgs=dict(cfg.dev),
-                )
+            last = depth == len(cfg.method.voxel_sizes) - 1 
+            if cfg.dev.use_film:
+                unet3d = Qattention3DNetWithFiLM(
+                    in_channels=VOXEL_FEATS + 3 + 1 + 3,
+                    out_channels=2,
+                    voxel_size=vox_size,
+                    out_dense=(num_rotation_classes * 3) if last else 0,
+                    kernels=LATENT_SIZE,
+                    dense_feats=128,
+                    norm=None if 'None' in cfg.method.norm else cfg.method.norm,
+                    activation=cfg.method.activation,
+                    low_dim_size=env.low_dim_state_len,
+                    include_prev_layer=include_prev_layer,
+                    use_context=cfg.dev.single_layer_context, 
+                    inp_context_size=cfg.dev.qnet_context_latent_size if (cfg.contexts.pass_down_context and cfg.dev.encode_context) else ctxt_size, #cfg.contexts.agent.embedding_size,
+                    dev_cfgs=dict(cfg.dev),
+                    )
+            else:
+                unet3d = Qattention3DNetWithContext(
+                    in_channels=VOXEL_FEATS + 3 + 1 + 3,
+                    out_channels=2,
+                    voxel_size=vox_size,
+                    out_dense=(num_rotation_classes * 3) if last else 0,
+                    kernels=LATENT_SIZE,
+                    dense_feats=128,
+                    norm=None if 'None' in cfg.method.norm else cfg.method.norm,
+                    activation=cfg.method.activation,
+                    low_dim_size=env.low_dim_state_len,
+                    include_prev_layer=include_prev_layer,
+                    use_context=cfg.dev.single_layer_context,
+                    encode_context=cfg.dev.encode_context,
+                    inp_context_size=cfg.dev.qnet_context_latent_size if (cfg.contexts.pass_down_context and cfg.dev.encode_context) else ctxt_size, #cfg.contexts.agent.embedding_size,
+                    encode_context_size=cfg.dev.qnet_context_latent_size,
+                    dev_cfgs=dict(cfg.dev),
+                    )
 
         qattention_agent = QAttentionContextAgent(
             layer=depth,
@@ -402,6 +436,7 @@ def create_agent_with_context(cfg: DictConfig, env,
             pass_down_context=cfg.contexts.pass_down_context,
             use_emb_loss=cfg.dev.qagent_use_emb_loss, 
             emb_weight=cfg.contexts.emb_weight,
+            one_hot=cfg.dev.one_hot,
         )
         qattention_agents.append(qattention_agent)
 

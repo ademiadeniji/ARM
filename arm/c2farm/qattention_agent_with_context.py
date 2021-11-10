@@ -130,6 +130,7 @@ class QAttentionContextAgent(Agent):
                  pass_down_context: bool = True,
                  use_emb_loss: bool = True, 
                  emb_weight: float = 1.0,
+                 one_hot: bool = False,
                  ):
         self._layer = layer
         self._lambda_trans_qreg = lambda_trans_qreg
@@ -164,6 +165,7 @@ class QAttentionContextAgent(Agent):
         self._pass_down_context = pass_down_context
         self._use_emb_loss = use_emb_loss
         self._emb_weight = emb_weight 
+        self._one_hot = one_hot 
         
     def build(self, training: bool, device: torch.device = None):
         if device is None:
@@ -193,12 +195,12 @@ class QAttentionContextAgent(Agent):
                 param.requires_grad = False
             utils.soft_updates(self._q, self._q_target, 1.0)
             q_params = self._q.parameters()
-            emb_params = self._context_agent._optim_params
+            emb_params = self._context_agent._optim_params 
             for e in emb_params:
                 e.update({'lr': self._emb_lr})
             # if self._update_context_agent: # NOTE: always add params here, doesn't have to affect 
             q_params = [{"params": q_params, 'lr': self._lr}] 
-            if self._layer == 0:
+            if self._layer == 0 and not self._one_hot:
                 q_params += emb_params # Only allow update here!
             self._optimizer = torch.optim.Adam(
                 q_params, lr=self._lr,
@@ -319,7 +321,7 @@ class QAttentionContextAgent(Agent):
         # still, later layers cannot update context embeder
         context = replay_sample['prev_layer_encoded_context'].to(self._device) 
         emb_loss = replay_sample.get('emb_loss',  None)
-        if self._use_emb_loss:
+        if self._use_emb_loss and not self._one_hot:
             assert emb_loss is not None, 'Context agent should also output loss'
             emb_loss = emb_loss.mean().to(self._device) 
 
@@ -405,7 +407,7 @@ class QAttentionContextAgent(Agent):
         total_loss = combined_delta + qreg_loss 
         
         total_loss = (total_loss * loss_weights).mean()  
-        if self._layer == 0 and self._use_emb_loss: # otherwise, Replay batch still updates context embedder, BUT not using hinge loss 
+        if self._layer == 0 and self._use_emb_loss and not self._one_hot: # otherwise, Replay batch still updates context embedder, BUT not using hinge loss 
             total_loss += (emb_loss).mean() * self._emb_weight 
         # DEBUG
         self._optimizer.zero_grad()
@@ -472,7 +474,7 @@ class QAttentionContextAgent(Agent):
             'var_prio': var_prio,
             'prev_layer_voxel_grid': voxel_grid,
             'prev_layer_voxel_grid_tp1': voxel_grid_tp1,
-            'prev_layer_encoded_context': encoded_context if self._pass_down_context else context,
+            'prev_layer_encoded_context': encoded_context if self._pass_down_context and encoded_context is not None else context,
         }
 
     def act(self, step: int, context_res: ActResult, observation: dict,

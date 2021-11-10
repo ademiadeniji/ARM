@@ -90,8 +90,6 @@ def visualize_batch(model_inp, inp_names=None, frame_idx=-1, filename='one_batch
             axs[row, col].axis('off')
             if inp_names:
                 axs[row, col].set_title(inp_names[i][j])
-             
-        
         plt.tight_layout()
     plt.savefig(f'{filename}.png')
 

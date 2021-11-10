@@ -73,6 +73,7 @@ dev:
     cat_up1: False 
     cat_up2: False
     cat_f1: False
+    cat_final: False
     conv3d: False 
     handpick: [] # [0,3,4,6,7,10,11,16,18,19] or, [0,3,4,6,10] for red, green,blue,yellow,gray
     # exclude similar colors: red, green,blue,yellow,cyan,gray,orange,violet,black,white
@@ -80,6 +81,8 @@ dev:
     offline: False 
     eval_only: False
     freeze_emb: False  
+    single_layer_context: False
+    use_film: False 
 
 contexts:
   num_update_itrs: 5

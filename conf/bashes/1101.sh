@@ -190,3 +190,4 @@ framework.replay_ratio=${RATIO} framework.training_iterations=10000 \
 contexts.agent.margin=${MAR} replay.update_buffer_prio=True \
 dev.encode_context=False contexts.pass_down_context=True contexts.emb_weight=${WEI} \
 rlbench.demo_path=/shared/mandi/all_rlbench_data  encoder.MODEL.OUT_DIM=8
+

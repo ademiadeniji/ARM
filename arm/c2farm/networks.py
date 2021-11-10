@@ -217,6 +217,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
                  low_dim_size: int,
                  kernels: int,
                  inp_context_size: int,
+                 use_context: bool = True, 
                  encode_context: bool = True,
                  encode_context_size: int = 16, 
                  norm: str = None,
@@ -241,6 +242,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
         # self._use_prev_context = use_prev_context 
         self._inp_context_size = inp_context_size
         self._encode_context_size = encode_context_size 
+        self._use_context = use_context 
         self._encode_context = encode_context
         self._dev_cfgs = dev_cfgs
         print('Using in-development cfgs:', dev_cfgs)
@@ -282,14 +284,15 @@ class Qattention3DNetWithContext(Qattention3DNet):
             d0_ins += self._kernels
 
         # Note context size can also equal _kernels if this is intermediate net and use_prev_context is True 
-        if self._encode_context:
-            self._context_preprocess = DenseBlock(
+        if self._use_context:
+            if self._encode_context:
+                self._context_preprocess = DenseBlock(
                     self._inp_context_size, self._encode_context_size, None, self._activation
-                )
-            d0_ins += self._encode_context_size # exactly the same as how low_dim_size is added
-        else:
-            logging.info('Warning - Not encoding context in Qattention3DNetWithContext')
-            d0_ins += self._inp_context_size 
+                    )
+                d0_ins += self._encode_context_size # exactly the same as how low_dim_size is added
+            else:
+                logging.info('Warning - Not encoding context in Qattention3DNetWithContext')
+                d0_ins += self._inp_context_size 
         self._down0 = block_class(
             d0_ins, self._kernels, norm=self._norm,
             activation=self._activation, residual=use_residual)
@@ -299,7 +302,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
         spatial_size //= 2
 
         d1_ins = self._down0.out_channels
-        if self._dev_cfgs.get('cat_down1', False):
+        if self._use_context and self._dev_cfgs.get('cat_down1', False):
             d1_ins = d1_ins + self._encode_context_size if self._encode_context else d1_ins + self._inp_context_size 
         self._down1 = block_class(
             d1_ins, self._kernels * 2, norm=self._norm,
@@ -315,7 +318,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
         if self._voxel_size > 8:
             k1 += self._kernels
             d2_ins = self._down1.out_channels
-            if self._dev_cfgs.get('cat_down2', False):
+            if self._use_context and self._dev_cfgs.get('cat_down2', False):
                 d2_ins = d2_ins + self._encode_context_size if self._encode_context else d2_ins + self._inp_context_size 
 
             self._down2 = block_class(
@@ -328,7 +331,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
             spatial_size //= 2
             
             k2 = self._down2.out_channels
-            if self._dev_cfgs.get('cat_up2', False):
+            if self._use_context and self._dev_cfgs.get('cat_up2', False):
                 k2 = k2 + self._encode_context_size if self._encode_context else k2 + self._inp_context_size
             if self._voxel_size > 16:
                 k2 *= 2
@@ -346,7 +349,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
                 k2, self._kernels, scale_factor=2, norm=self._norm,
                 activation=self._activation, residual=use_residual)
 
-        if self._dev_cfgs.get('cat_up1', False):
+        if self._use_context and self._dev_cfgs.get('cat_up1', False):
             k1 = k1 + self._encode_context_size if self._encode_context else k1 + self._inp_context_size
             
         self._up1 = upsample_block_class(
@@ -357,7 +360,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
         self._local_maxp = nn.MaxPool3d(3, 2, padding=1)
 
         final_ins = self._kernels * 2
-        if self._dev_cfgs.get('cat_f1', False):
+        if self._use_context and self._dev_cfgs.get('cat_f1', False):
             final_ins = final_ins + self._encode_context_size if self._encode_context else final_ins + self._inp_context_size
          
         self._final = Conv3DBlock(
@@ -372,7 +375,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
             self._kernels)
         flat_size += self._kernels * 4
 
-        if self._dev_cfgs.get('cat_final', False):
+        if self._use_context and self._dev_cfgs.get('cat_final', False):
             flat_size = flat_size + self._encode_context_size if self._encode_context else flat_size + self._inp_context_size
 
 
@@ -401,14 +404,14 @@ class Qattention3DNetWithContext(Qattention3DNet):
                 1, 1, d, h, w)
             x = torch.cat([x, p], dim=1)
         
-        if self._encode_context:
+        if self._use_context and self._encode_context:
             ctxt = self._context_preprocess(context) # b, 64 
         else:
             ctxt = context 
         # print('networks Qnet forward: ctxt shape', ctxt.shape)
         rep0 = repeat(ctxt, 'b c -> b c d h w', d=d, h=h, w=w)
         # print('networks Qnet forward: repeated shape', rep0.shape) # b, 64, 16, 16, 16
-        down0_in = torch.cat([x, rep0], dim=1)
+        down0_in = torch.cat([x, rep0], dim=1) if self._use_context else x 
 
         d0 = self._down0(down0_in)
         # print('forward Qnet: d0 shape', d0.shape) #[b, 64, 16, 16, 16]
@@ -418,7 +421,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
         # print('forward Qnet: maxp0 shape', maxp0.shape) #[b, 64]
         # print('forward Qnet: down1_in shape', down1_in.shape) #[b, 64, 8, 8, 8]
         
-        if self._dev_cfgs.get('cat_down1', False):
+        if self._use_context and self._dev_cfgs.get('cat_down1', False):
             _, _, dd, hh, ww = down1_in.shape
             rep1 = repeat(ctxt, 'b c -> b c d h w', d=dd, h=hh, w=ww)
             down1_in = torch.cat([down1_in, rep1], dim=1)
@@ -433,7 +436,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
         if self._voxel_size > 8:
             down2_in = self._local_maxp(d1)
             # print('forward Qnet: down2_in shape', down2_in.shape) # [b, 128, 4, 4, 4]
-            if self._dev_cfgs.get('cat_down2', False):
+            if self._use_context and self._dev_cfgs.get('cat_down2', False):
                 _, _, dd, hh, ww = down2_in.shape
                 rep2 = repeat(ctxt, 'b c -> b c d h w', d=dd, h=hh, w=ww)
                 down2_in = torch.cat([down2_in, rep2], dim=1)
@@ -449,7 +452,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
             
             up2_in = u
             # print('forward Qnet: up2_in shape', up2_in.shape) # [b, 256, 4, 4, 4]
-            if self._dev_cfgs.get('cat_up2', False):
+            if self._use_context and self._dev_cfgs.get('cat_up2', False):
                 _, _, dd, hh, ww = up2_in.shape
                 rep22 = repeat(ctxt, 'b c -> b c d h w', d=dd, h=hh, w=ww)
                 up2_in = torch.cat([up2_in, rep22], dim=1)
@@ -460,7 +463,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
 
         # print('forward Qnet: up1_in shape', u.shape) [b, 192, 8, 8, 8]
         up1_in = u
-        if self._dev_cfgs.get('cat_up1', False):
+        if self._use_context and self._dev_cfgs.get('cat_up1', False):
             _, _, dd, hh, ww = up1_in.shape
             rep11 = repeat(ctxt, 'b c -> b c d h w', d=dd, h=hh, w=ww)
             up1_in = torch.cat([up1_in, rep11], dim=1)
@@ -469,7 +472,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
 
         f1_in = torch.cat([d0, u1], dim=1)
         # print('forward Qnet: f1 shape', f1_in.shape) #[b, 64, 16, 16, 16]
-        if self._dev_cfgs.get('cat_f1', False):
+        if self._use_context and self._dev_cfgs.get('cat_f1', False):
             _, _, dd, hh, ww = f1_in.shape
             repf1 = repeat(ctxt, 'b c -> b c d h w', d=dd, h=hh, w=ww)
             f1_in = torch.cat([f1_in, repf1], dim=1)
@@ -515,6 +518,301 @@ class Qattention3DNetWithContext(Qattention3DNet):
         
         return trans, rot_and_grip_out, ctxt 
 
+class Qattention3DNetWithFiLM(Qattention3DNet):
+    """For each Conv3DInceptionBlock, film-encode the context to 
+    outuput (beta, gamma) for weight+shift the features """
+    def __init__(self,
+                 in_channels: int,
+                 out_channels: int,
+                 out_dense: int,
+                 voxel_size: int,
+                 low_dim_size: int,
+                 kernels: int,
+                 inp_context_size: int, 
+                 use_context: bool = True,
+                 norm: str = None,
+                 activation: str = 'relu',
+                 dense_feats: int = 32,
+                 include_prev_layer = False, # has been false  
+                 dev_cfgs: dict = {},   
+                 ):
+        super(Qattention3DNet, self).__init__()
+        self._in_channels = in_channels
+        self._out_channels = out_channels
+        self._norm = norm
+        self._activation = activation
+        self._kernels = kernels
+        self._low_dim_size = low_dim_size
+        self._build_calls = 0
+        self._voxel_size = voxel_size
+        self._dense_feats = dense_feats
+        self._out_dense = out_dense
+        self._include_prev_layer = include_prev_layer
+        # context related
+        # self._use_prev_context = use_prev_context 
+        self._inp_context_size = inp_context_size 
+        self._use_context = use_context
+        self._dev_cfgs = dev_cfgs
+        print('Using in-development cfgs:', dev_cfgs) 
+        print(f'Qattention3DNet: Input context embedding size: {inp_context_size}')
+
+    
+    def build(self):
+        block_class = Conv3DInceptionBlock
+        upsample_block_class = Conv3DInceptionBlockUpsampleBlock
+        if self._dev_cfgs.get('conv3d', False):
+            block_class = partial(Conv3DBlock, kernel_sizes=3, strides=1)
+             # Conv3DResNetBlock 
+            upsample_block_class = partial(Conv3DUpsampleBlock,
+                kernel_sizes=3, strides=1)
+        
+        use_residual = False
+        self._build_calls += 1
+        if self._build_calls != 1:
+            raise RuntimeError('Build needs to be called once.')
+
+        spatial_size = self._voxel_size
+        self._input_preprocess = block_class(
+            self._in_channels, self._kernels, norm=self._norm,
+            activation=self._activation)
+
+        d0_ins = self._input_preprocess.out_channels
+        # create film layer for every set of feature maps output
+        self._d0_film = DenseBlock(self._inp_context_size, d0_ins * 2, None, self._activation)
+        # Note film happens *before* low_dim get concated
+        if self._include_prev_layer:
+            PREV_VOXEL_CHANNELS = 0
+            self._input_preprocess_prev_layer = block_class(
+                self._in_channels + PREV_VOXEL_CHANNELS, self._kernels, norm=self._norm,
+                activation=self._activation)
+            d0_ins += self._input_preprocess_prev_layer.out_channels
+
+        if self._low_dim_size > 0:
+            self._proprio_preprocess = DenseBlock(
+                self._low_dim_size, self._kernels, None, self._activation)
+            d0_ins += self._kernels
+
+        # Note context size can also equal _kernels if this is intermediate net and use_prev_context is True 
+         
+        self._down0 = block_class(
+            d0_ins, self._kernels, norm=self._norm,
+            activation=self._activation, residual=use_residual)
+        self._ss0 = SpatialSoftmax3D(
+            spatial_size, spatial_size, spatial_size,
+            self._down0.out_channels)
+        spatial_size //= 2
+
+        d1_ins = self._down0.out_channels
+        self._d1_film = DenseBlock(self._inp_context_size, d1_ins * 2, None, self._activation)
+        self._down1 = block_class(
+            d1_ins, self._kernels * 2, norm=self._norm,
+            activation=self._activation, residual=use_residual)
+        self._ss1 = SpatialSoftmax3D(
+            spatial_size, spatial_size, spatial_size,
+            self._down1.out_channels)
+        spatial_size //= 2
+
+        flat_size = self._down0.out_channels * 4 + self._down1.out_channels * 4
+        
+        k1 = self._down1.out_channels
+        if self._voxel_size > 8:
+            k1 += self._kernels
+            d2_ins = self._down1.out_channels
+            self._d2_film = DenseBlock(self._inp_context_size, d2_ins * 2, None, self._activation)
+            self._down2 = block_class(
+                d2_ins, self._kernels * 4, norm=self._norm,
+                activation=self._activation,  residual=use_residual)
+            flat_size += self._down2.out_channels * 4
+            self._ss2 = SpatialSoftmax3D(
+                spatial_size, spatial_size, spatial_size,
+                self._down2.out_channels)
+            spatial_size //= 2
+            
+            k2 = self._down2.out_channels
+            if self._voxel_size > 16:
+                raise ValueError # not worrying for now 
+                k2 *= 2
+                self._down3 = block_class(
+                    self._down2.out_channels, self._kernels, norm=self._norm,
+                    activation=self._activation, residual=use_residual)
+                flat_size += self._down3.out_channels * 4
+                self._ss3 = SpatialSoftmax3D(
+                    spatial_size, spatial_size, spatial_size,
+                    self._down3.out_channels)
+                self._up3 = upsample_block_class(
+                    self._kernels, self._kernels, scale_factor=2, norm=self._norm,
+                    activation=self._activation, residual=use_residual)
+            
+            self._u2_film = DenseBlock(self._inp_context_size, k2 * 2, None, self._activation)
+            self._up2 = upsample_block_class(
+                k2, self._kernels, scale_factor=2, norm=self._norm,
+                activation=self._activation, residual=use_residual)
+
+        self._u1_film = DenseBlock(self._inp_context_size, k1 * 2, None, self._activation)
+        self._up1 = upsample_block_class(
+            k1, self._kernels, scale_factor=2, norm=self._norm,
+            activation=self._activation, residual=use_residual)
+
+        self._global_maxp = nn.AdaptiveMaxPool3d(1)
+        self._local_maxp = nn.MaxPool3d(3, 2, padding=1)
+
+        final_ins = self._kernels * 2
+        self._f1_film = DenseBlock(self._inp_context_size, final_ins * 2, None, self._activation)
+        self._final = Conv3DBlock(
+            final_ins, self._kernels, kernel_sizes=3,
+            strides=1, norm=self._norm, activation=self._activation)
+        self._f2_film = DenseBlock(self._inp_context_size, self._kernels * 2, None, self._activation)
+        self._final2 = Conv3DBlock(
+            self._kernels, self._out_channels, kernel_sizes=3,
+            strides=1, norm=None, activation=None)
+
+        self._ss_final = SpatialSoftmax3D(
+            self._voxel_size, self._voxel_size, self._voxel_size,
+            self._kernels)
+        flat_size += self._kernels * 4 
+
+        if self._out_dense > 0:
+            self._dense0 = DenseBlock(
+                flat_size, self._dense_feats, None, self._activation)
+            self._dense1 = DenseBlock(
+                self._dense_feats, self._dense_feats, None, self._activation)
+            self._dense2 = DenseBlock(
+                self._dense_feats, self._out_dense, None, None)
+ 
+    def forward(self, ins, proprio, prev_layer_voxel_grid, context):
+        b, _, d, h, w = ins.shape
+        if len(context.shape) == 1: # for acting
+            context = rearrange(context, 'c -> 1 c')
+
+        x = self._input_preprocess(ins)
+        if self._use_context:
+            
+            gam, beta = self._d0_film(context).split(x.shape[1], dim=1)
+            gam, beta = repeat(gam, 'b c -> b c 1 1 1'), repeat(beta, 'b c -> b c 1 1 1')
+            assert x.shape == (gam * x + beta).shape
+            x = gam * x + beta
+        if self._include_prev_layer:
+            y = self._input_preprocess_prev_layer(prev_layer_voxel_grid)
+            x = torch.cat([x, y], dim=1)
+
+        if self._low_dim_size > 0:
+            p = self._proprio_preprocess(proprio)
+            p = p.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(
+                1, 1, d, h, w)
+            x = torch.cat([x, p], dim=1) 
+        
+        
+        d0 = self._down0(x)
+        # print('forward Qnet: d0 shape', d0.shape) #[b, 64, 16, 16, 16]
+        # do film before the softmax/max pools
+        if self._use_context:
+            gam, beta = self._d1_film(context).split(d0.shape[1], dim=1)
+            gam, beta = repeat(gam, 'b c -> b c 1 1 1'), repeat(beta, 'b c -> b c 1 1 1')
+            assert d0.shape == (gam * d0 + beta).shape, f"Got before/after shape: {d0.shape}, {(gam * d0 + beta).shape}"
+            d0 = d0 * gam + beta 
+
+        ss0 = self._ss0(d0)
+        maxp0 = self._global_maxp(d0).view(b, -1)
+        down1_in = self._local_maxp(d0)
+        # print('forward Qnet: maxp0 shape', maxp0.shape) #[b, 64]
+        # print('forward Qnet: down1_in shape', down1_in.shape) #[b, 64, 8, 8, 8]
+        
+        d1 = u = self._down1(down1_in)
+        if self._use_context:
+            gam, beta = self._d2_film(context).split(d1.shape[1], dim=1)
+            gam, beta = repeat(gam, 'b c -> b c 1 1 1'), repeat(beta, 'b c -> b c 1 1 1')
+            assert d1.shape == (gam * d1 + beta).shape, f"Got before/after shape: {d1.shape}, {(gam * d1 + beta).shape}"
+            d1 = d1 * gam + beta
+
+        ss1 = self._ss1(d1)
+        maxp1 = self._global_maxp(d1).view(b, -1)
+        # print('forward Qnet: maxp1 shape', maxp1.shape) #[b, 128]
+
+        feats = [ss0, maxp0, ss1, maxp1]
+
+        if self._voxel_size > 8:
+            down2_in = self._local_maxp(d1)
+            # print('forward Qnet: down2_in shape', down2_in.shape) # [b, 128, 4, 4, 4]
+            d2 = u = self._down2(down2_in) 
+            # print('forward Qnet: down2_out shape', d2.shape) # [b, 128, 4, 4, 4]
+            feats.extend([self._ss2(d2), self._global_maxp(d2).view(b, -1)])
+            if self._voxel_size > 16:
+                raise NotImplementedError 
+                d3 = self._down3(self._local_maxp(d2))
+                feats.extend([self._ss3(d3), self._global_maxp(d3).view(b, -1)])
+                u3 = self._up3(d3)
+                u = torch.cat([d2, u3], dim=1) 
+            
+            up2_in = u
+            if self._use_context:
+                gam, beta = self._u2_film(context).split(up2_in.shape[1], dim=1)
+                gam, beta = repeat(gam, 'b c -> b c 1 1 1'), repeat(beta, 'b c -> b c 1 1 1')
+                assert up2_in.shape == (gam * up2_in + beta).shape 
+                up2_in = up2_in * gam + beta
+            u2 = self._up2(up2_in)
+            # print('forward Qnet: up2_out shape', u2.shape) # torch.Size([b, 64, 8, 8, 8])
+            u = torch.cat([d1, u2], dim=1)
+
+        # print('forward Qnet: up1_in shape', u.shape) [b, 192, 8, 8, 8]
+        up1_in = u
+        if self._use_context:
+            gam, beta = self._u1_film(context).split(up1_in.shape[1], dim=1)
+            gam, beta = repeat(gam, 'b c -> b c 1 1 1'), repeat(beta, 'b c -> b c 1 1 1')
+            assert up1_in.shape == (gam * up1_in + beta).shape 
+            up1_in = up1_in * gam + beta 
+        u1 = self._up1(up1_in)
+
+        f1_in = torch.cat([d0, u1], dim=1)
+        # print('forward Qnet: f1 shape', f1_in.shape) #[b, 64, 16, 16, 16]
+        if self._use_context:
+            gam, beta = self._f1_film(context).split(f1_in.shape[1], dim=1)
+            gam, beta = repeat(gam, 'b c -> b c 1 1 1'), repeat(beta, 'b c -> b c 1 1 1')
+            assert f1_in.shape == (gam * f1_in + beta).shape 
+            f1_in = f1_in * gam + beta  
+        f1 = self._final(f1_in)
+        
+        if self._use_context:
+            gam, beta = self._f2_film(context).split(f1.shape[1], dim=1)
+            gam, beta = repeat(gam, 'b c -> b c 1 1 1'), repeat(beta, 'b c -> b c 1 1 1')
+            f1 = f1 * gam + beta 
+         
+        trans = self._final2(f1)
+        # print('forward Qnet: trans shape', trans.shape) #[b, 1, 16, 16, 16]
+
+        feats.extend([self._ss_final(f1), self._global_maxp(f1).view(b, -1)])
+
+        self.latent_dict = {
+            'd0': d0.mean(-1).mean(-1).mean(-1),
+            'd1': d1.mean(-1).mean(-1).mean(-1),
+            'u1': u1.mean(-1).mean(-1).mean(-1),
+            'trans_out': trans, 
+        }
+
+        rot_and_grip_out = None
+        if self._out_dense > 0:
+            dense0_in = torch.cat(feats, 1)
+            # print('forward Qnet: dense0_in shape', dense0_in.shape) [b, 2048]
+            dense0 = self._dense0(dense0_in)
+            dense1 = self._dense1(dense0)
+            rot_and_grip_out = self._dense2(dense1)
+            self.latent_dict.update({
+                'dense0': dense0,
+                'dense1': dense1,
+                'dense2': rot_and_grip_out,
+            })
+
+        if self._voxel_size > 8:
+            self.latent_dict.update({
+                'd2': d2.mean(-1).mean(-1).mean(-1),
+                'u2': u2.mean(-1).mean(-1).mean(-1),
+            })
+        if self._voxel_size > 16:
+            self.latent_dict.update({
+                'd3': d3.mean(-1).mean(-1).mean(-1),
+                'u3': u3.mean(-1).mean(-1).mean(-1),
+            })
+        
+        return trans, rot_and_grip_out, None  # in place of encoded_context
 
 
 if __name__ == '__main__':
@@ -532,10 +830,32 @@ if __name__ == '__main__':
         dev_cfgs={'conv3d':False},
         )
     qnet.build()
+    b = 1
+    ins = torch.ones(b, 10 , 3,128,128)
+    prop = torch.ones(b,10)
+    context = torch.ones(b, 20)
+    print(qnet(ins, prop, None, context).shape)
     num_params = sum([p.numel() for p in qnet.parameters() if p.requires_grad])
-    print(num_params)
+    print('Qattention3DNetWithContext # of params:', num_params)
 
-    qnet = Qattention3DNetWithContext(
+    # qnet = Qattention3DNetWithContext(
+    #     in_channels=10,
+    #     out_channels=1,
+    #     voxel_size=16,
+    #     out_dense=0,
+    #     kernels=64,
+    #     norm=None, 
+    #     dense_feats=128,
+    #     activation='lrelu',
+    #     low_dim_size=10,
+    #     inp_context_size=20,
+    #     dev_cfgs={'conv3d': True},
+    #     )
+    # qnet.build()
+    # num_params = sum([p.numel() for p in qnet.parameters() if p.requires_grad])
+    # print('Qattention3DNetWithContext # of params:', num_params)
+
+    qnet = Qattention3DNetWithFiLM(
         in_channels=10,
         out_channels=1,
         voxel_size=16,
@@ -545,9 +865,18 @@ if __name__ == '__main__':
         dense_feats=128,
         activation='lrelu',
         low_dim_size=10,
+        use_context=False,
         inp_context_size=20,
-        dev_cfgs={'conv3d': True},
+        dev_cfgs={'conv3d': False},
         )
+    qnet.build()
+    b = 1
+    ins = torch.ones(b, 10 , 3,128,128)
+    prop = torch.ones(b,10)
+    context = torch.ones(b, 20)
+    print(qnet(ins, prop, None, context).shape)
     num_params = sum([p.numel() for p in qnet.parameters() if p.requires_grad])
-    print(num_params)
+    print('Qattention3DNetWithFiLM # of params:', num_params)
+
+
     
