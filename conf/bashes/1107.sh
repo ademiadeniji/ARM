@@ -393,9 +393,9 @@ rlbench.demo_path=/shared/mandi/all_rlbench_data dev.qnet_context_latent_size=8
     RATIO=6
     MAR=5e-1
     WEI=1
-    RUN=10Var-Emd16-FiLM-Joint-Margin${MAR}
+    RUN=10Var-Emd8-FiLM-Joint-Margin${MAR}
     taskset -c $CPUS python launch_context.py run_name=${RUN} \
-    tasks=['pick_up_cup'] rlbench.num_vars=10  replay.batch_size=6 \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  replay.batch_size=10 \
     dev.qagent_update_context=True encoder.MODEL.OUT_DIM=4  \
     contexts.agent.query_ratio=${Query_ratio} \
     method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
@@ -403,3 +403,141 @@ rlbench.demo_path=/shared/mandi/all_rlbench_data dev.qnet_context_latent_size=8
     contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
     dev.encode_context=False contexts.emb_weight=${WEI} \
     rlbench.demo_path=/shared/mandi/all_rlbench_data dev.use_film=True 
+
+    Query_ratio=0.3
+    E_LR=5e-4
+    K_dim=16 
+    RATIO=6
+    MAR=5e-1
+    WEI=1
+    RUN=10Var-Emd8-FiLM-Joint-Margin${MAR}
+    taskset -c $CPUS python launch_context.py run_name=${RUN} \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  replay.batch_size=10 \
+    dev.qagent_update_context=True encoder.MODEL.OUT_DIM=2  \
+    contexts.agent.query_ratio=${Query_ratio} \
+    method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+    framework.replay_ratio=${RATIO} framework.training_iterations=20000 \
+    contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
+    dev.encode_context=False contexts.emb_weight=${WEI} \
+    rlbench.demo_path=/shared/mandi/all_rlbench_data dev.use_film=True 
+
+# rtxs1 FiLM + pre-train
+    Query_ratio=0.3
+    E_LR=1e-4
+    K_dim=16 
+    RATIO=6
+    MAR=5e-1
+    WEI=1
+    RUN=10Var-Emd32-FiLM-Joint-Margin${MAR}-Pretrain2k
+    taskset -c $CPUS python launch_context.py run_name=${RUN} \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  replay.batch_size=6 \
+    dev.qagent_update_context=True encoder.MODEL.OUT_DIM=8  \
+    contexts.agent.query_ratio=${Query_ratio} \
+    method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+    framework.replay_ratio=${RATIO} framework.training_iterations=20000 \
+    contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
+    dev.encode_context=False contexts.emb_weight=${WEI} \
+    rlbench.demo_path=/shared/mandi/all_rlbench_data dev.use_film=True 
+
+    # FiLM + one-hot
+     
+    RATIO=6
+    RUN=10Var-OneHot-FiLM-Joint-Margin${MAR}
+    taskset -c $CPUS python launch_context.py run_name=${RUN} tasks=['pick_and_lift'] \
+    rlbench.num_vars=10  replay.batch_size=6  dev.one_hot=True framework.replay_ratio=${RATIO} framework.training_iterations=20000 \
+    contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
+    rlbench.demo_path=/shared/mandi/all_rlbench_data dev.use_film=True 
+
+# txl1 FiLM + freeze:
+    Query_ratio=0.3
+    E_LR=5e-4
+    K_dim=16 
+    RATIO=6
+    MAR=5e-1
+    WEI=1
+    RUN=10Var-Emd32-FiLM-Joint-Margin${MAR}-Pretrain2k
+    taskset -c $CPUS python launch_context.py run_name=${RUN} \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  replay.batch_size=6 \
+    dev.qagent_update_context=True encoder.MODEL.OUT_DIM=8  \
+    contexts.agent.query_ratio=${Query_ratio} \
+    method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+    framework.replay_ratio=${RATIO} framework.training_iterations=20000 \
+    contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
+    dev.encode_context=False contexts.emb_weight=${WEI} \
+    rlbench.demo_path=/shared/mandi/all_rlbench_data dev.use_film=True dev.freeze_emb=True
+
+
+    RATIO=6
+    RUN=10Var-OneHot-FiLM-Joint-Margin${MAR}
+    taskset -c $CPUS python launch_context.py run_name=${RUN} tasks=['pick_up_cup'] \
+    rlbench.num_vars=10  replay.batch_size=10  dev.one_hot=True framework.replay_ratio=${RATIO} framework.training_iterations=20000 \
+    contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
+    rlbench.demo_path=/shared/mandi/all_rlbench_data dev.use_film=True contexts.pretrain_replay_steps=2000
+
+    
+# ti1: normalized:
+    Query_ratio=0.3
+    E_LR=5e-4
+    K_dim=16 
+    RATIO=6
+    MAR=5e-1
+    WEI=1
+    RUN=10Var-Emd16-Encode8-Normed-Single-Margin${MAR}
+    taskset -c $CPUS python launch_context.py run_name=${RUN} \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  replay.batch_size=10 \
+    dev.qagent_update_context=True encoder.MODEL.OUT_DIM=4 dev.encode_context=True dev.qnet_context_latent_size=8  \
+    contexts.agent.query_ratio=${Query_ratio} \
+    method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+    framework.replay_ratio=${RATIO} framework.training_iterations=20000 \
+    contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
+    contexts.emb_weight=${WEI} 
+
+    Query_ratio=0.3
+    E_LR=5e-4
+    K_dim=16 
+    RATIO=6
+    MAR=5e-1
+    WEI=1
+    RUN=10Var-Emd16-Encode8-Normed-Mean-Margin${MAR}
+    taskset -c $CPUS python launch_context.py run_name=${RUN} \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  replay.batch_size=10 \
+    dev.qagent_update_context=True encoder.MODEL.OUT_DIM=4 dev.encode_context=True dev.qnet_context_latent_size=8  \
+    contexts.agent.query_ratio=${Query_ratio} \
+    method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+    framework.replay_ratio=${RATIO} framework.training_iterations=20000 \
+    contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
+    dev.encode_context=False contexts.emb_weight=${WEI} contexts.agent.single_embedding_replay=False 
+
+     
+    Query_ratio=0.3
+    E_LR=5e-4
+    K_dim=16 
+    RATIO=6
+    MAR=5e-1
+    WEI=1
+    RUN=10Var-Emd8-Encode16-Normed-Mean-Margin${MAR}
+    taskset -c $CPUS python launch_context.py run_name=${RUN} \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  replay.batch_size=10 \
+    dev.qagent_update_context=True encoder.MODEL.OUT_DIM=2 dev.encode_context=True dev.qnet_context_latent_size=16  \
+    contexts.agent.query_ratio=${Query_ratio} \
+    method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+    framework.replay_ratio=${RATIO} framework.training_iterations=20000 \
+    contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
+    dev.encode_context=False contexts.emb_weight=${WEI} contexts.agent.single_embedding_replay=False 
+
+
+    Query_ratio=0.3
+    E_LR=5e-4
+    K_dim=16 
+    RATIO=6
+    MAR=5e-1
+    WEI=1
+    RUN=10Var-Emd8-NoEncode-Normed-Mean-Margin${MAR}
+    taskset -c $CPUS python launch_context.py run_name=${RUN} \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  replay.batch_size=10 \
+    dev.qagent_update_context=True encoder.MODEL.OUT_DIM=2 dev.encode_context=False \
+    contexts.agent.query_ratio=${Query_ratio} \
+    method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+    framework.replay_ratio=${RATIO} framework.training_iterations=20000 \
+    contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
+    dev.encode_context=False contexts.emb_weight=${WEI} contexts.agent.single_embedding_replay=False 

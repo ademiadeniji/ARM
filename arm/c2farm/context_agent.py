@@ -136,10 +136,13 @@ class ContextAgent(Agent):
         embeddings = self._embedding_net(model_inp) # shape (b, embed_dim)
         embeddings = rearrange(embeddings, '(b k) d -> b k d', b=b, k=k)
         if self.single_embedding_replay:
-            action_embeddings = repeat(embeddings[:, 0, :], 'b d -> b k d', b=b, k=k_action)
+            action_embeddings = repeat(embeddings[:, 0, :], 'b d -> b k d', b=b, k=k_action) 
         else:
-            idxs = torch.randint( k, (k_action,) )  #select _with_ replacement 
-            action_embeddings = embeddings[:, idxs]
+            # idxs = torch.randint( k, (k_action,) )  #select _with_ replacement 
+            # action_embeddings = embeddings[:, idxs]
+            # NOTE(1101): take mean emb. here instead
+            action_embeddings = repeat(embeddings.mean(dim=1), 'b d -> b k d', b=b, k=k_action)
+        action_embeddings = action_embeddings / action_embeddings.norm(dim=2, p=2, keepdim=True)
         # print('shapes of action embeddings vs embeddings:', action_embeddings.shape, embeddings.shape)
         act_result = ActResult(action_embeddings, info={})
         if self._replay_update and output_loss: 
@@ -155,7 +158,6 @@ class ContextAgent(Agent):
             self._replay_summaries = {
                     'replay_batch/'+k: torch.mean(v) for k,v in update_dict.items()}
              
-
         return act_result
         
     def act(self, step: int, observation: dict,
@@ -166,8 +168,10 @@ class ContextAgent(Agent):
         data = observation[CONTEXT_KEY].to(self._device)
         if self._one_hot:
             return ActResult(data)
+        #print(data.shape)
         model_inp = rearrange(data, 'n ch h w -> 1 ch n h w')
-        embeddings = self._embedding_net(model_inp)
+        embeddings = self._embedding_net(model_inp) # should be (1,d)
+        embeddings = embeddings / embeddings.norm(dim=1, p=2, keepdim=True) 
         self._current_context = embeddings.detach().requires_grad_(False)
         return ActResult(self._current_context)
         
@@ -313,8 +317,8 @@ class ContextAgent(Agent):
 
         negatives = torch.masked_select(similarities, diag.unsqueeze(-1) == 0)
         # (batch, batch-1, query)
-        # print('shapes:', query_embeddings.shape, similarities.shape, diag.shape, )
-        # print('negatives shape:', negatives.shape, positives.shape)
+        #print('shapes:', query_embeddings.shape, similarities.shape, diag.shape, )
+        #print('negatives shape:', negatives.shape, positives.shape)
         negatives = negatives.view(b, b - 1, -1)
 
         loss = torch.max(self._zero, self._margin - positives + negatives)
@@ -330,12 +334,22 @@ class ContextAgent(Agent):
             self._val_embedding_accuracy = accuracy.float().mean() 
         else:
             self._embedding_accuracy = accuracy.float().mean()
-
+        
+        #print(support_context.shape, support_embeddings[:,0].shape)
+        similarities = support_embeddings[:,0].matmul(query_embeddings.transpose(0, 1))
+        similarities = similarities.view(b, b, num_query)
+        positives = torch.masked_select(similarities, diag.unsqueeze(-1).bool())  # (B * query)
+        positives = positives.view(b, 1, num_query)  # (B, 1, query) 
+        negatives = torch.masked_select(similarities, diag.unsqueeze(-1) == 0) 
+        negatives = negatives.view(b, b - 1, -1)
+        max_of_negs = negatives.max(1)[0]  # (batch, query)
+        single_accuracy = positives[:, 0] > max_of_negs
         return {
             # 'context': support_context,
             'emb_loss': loss * self._emb_lambda,
             'mean_emb_loss': loss.mean() * self._emb_lambda,
-            'emd_acc': accuracy.float().mean(), 
+            'emd_acc': accuracy.float().mean(),
+            'emd_single_acc':  single_accuracy.float().mean(),
         }
 
     def _compute_hinge_loss_v2(self, embeddings, val=False):

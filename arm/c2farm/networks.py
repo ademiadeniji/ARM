@@ -388,7 +388,8 @@ class Qattention3DNetWithContext(Qattention3DNet):
                 self._dense_feats, self._out_dense, None, None)
  
     def forward(self, ins, proprio, prev_layer_voxel_grid, context):
-        b, _, d, h, w = ins.shape
+        b, _, d, h, w = ins.shape # b, 10, 16, 16, 16
+        
         if len(context.shape) == 1: # for acting
             context = rearrange(context, 'c -> 1 c')
 
@@ -871,7 +872,7 @@ if __name__ == '__main__':
         )
     qnet.build()
     b = 1
-    ins = torch.ones(b, 10 , 3,128,128)
+    ins = torch.ones(b, 10, 3,128,128)
     prop = torch.ones(b,10)
     context = torch.ones(b, 20)
     print(qnet(ins, prop, None, context).shape)

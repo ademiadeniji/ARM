@@ -79,19 +79,23 @@ class QFunction(nn.Module):
         b = x[0][0].shape[0]
         pcd_flat = torch.cat(
             [p.permute(0, 2, 3, 1).reshape(b, -1, 3) for p in pcd], 1)
-
+        # print(pcd_flat.shape) [B, 16384, 3]
         image_features = [xx[0] for xx in x]
+        # print(image_features[0].shape) [B, 3, 128, 128]
         feat_size = image_features[0].shape[1]
         flat_imag_features = torch.cat(
             [p.permute(0, 2, 3, 1).reshape(b, -1, feat_size) for p in
              image_features], 1)
+
+        # print(flat_imag_features.shape) # ([B, 16384, 3])
 
         voxel_grid = self._voxel_grid.coords_to_bounding_voxel_grid(
             pcd_flat, coord_features=flat_imag_features, coord_bounds=bounds)
 
         # Swap to channels fist
         voxel_grid = voxel_grid.permute(0, 4, 1, 2, 3).detach()
-
+        # print(voxel_grid.shape) # [Batch, 10, 16, 16, 16])
+         
         q_trans, rot_and_grip_q, encoded_context = self._qnet(voxel_grid, proprio, prev_layer_voxel_grid, context)
         return q_trans, rot_and_grip_q, voxel_grid, encoded_context
 
@@ -270,6 +274,7 @@ class QAttentionContextAgent(Agent):
                 pcd = stack_on_channel(replay_sample['%s_point_cloud' % n])
                 pcd_tp1 = stack_on_channel(
                     replay_sample['%s_point_cloud_tp1' % n])
+            
             obs.append([rgb, pcd])
             obs_tp1.append([rgb_tp1, pcd_tp1])
             pcds.append(pcd)
