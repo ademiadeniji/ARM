@@ -340,6 +340,8 @@ def create_agent_with_context(cfg: DictConfig, env,
         ctxt_size = sum([len(variations) for variations in cfg.rlbench.all_variations]) 
     elif cfg.dev.noisy_one_hot:
         ctxt_size = sum([len(variations) for variations in cfg.rlbench.use_variations]) 
+        if cfg.dev.noisy_dim_20:
+            ctxt_size = 20
     else: 
         ctxt_size = cfg.contexts.agent.embedding_size * 4 
     for depth, vox_size in enumerate(cfg.method.voxel_sizes):

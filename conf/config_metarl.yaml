@@ -38,7 +38,7 @@ framework:
     train_envs: 1
     eval_envs: 1
     env_runner_gpu: 2
-    replay_ratio: 3
+    replay_ratio: 6
     transitions_before_train: 100
     tensorboard_logging: True
     csv_logging: False
@@ -67,6 +67,7 @@ dev:
     qagent_use_emb_loss: True # for ablation set to False 
     one_hot: False 
     noisy_one_hot: False 
+    noisy_dim_20: False 
     encode_context: True  # if one-hot, prolly ok not to encode
     qnet_context_latent_size: 16
     cat_down1: False
