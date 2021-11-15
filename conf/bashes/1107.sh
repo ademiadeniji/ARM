@@ -541,3 +541,100 @@ rlbench.demo_path=/shared/mandi/all_rlbench_data dev.qnet_context_latent_size=8
     framework.replay_ratio=${RATIO} framework.training_iterations=20000 \
     contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
     dev.encode_context=False contexts.emb_weight=${WEI} contexts.agent.single_embedding_replay=False 
+
+# ti5: try diff lr, margin
+    Query_ratio=0.3
+    K_dim=16 
+    RATIO=6
+    MAR=5e-1
+    WEI=1
+    for E_LR in 3e-4 1e-4
+    do
+    RUN=10Var-Emd16-Encode8-Normed-Mean-Margin${MAR}-Elr${E_LR}
+    taskset -c $CPUS python launch_context.py run_name=${RUN} \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  replay.batch_size=10 \
+    dev.qagent_update_context=True encoder.MODEL.OUT_DIM=4 dev.encode_context=True dev.qnet_context_latent_size=8  \
+    contexts.agent.query_ratio=${Query_ratio} \
+    method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+    framework.replay_ratio=${RATIO} framework.training_iterations=10000 \
+    contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
+    dev.encode_context=False contexts.emb_weight=${WEI} contexts.agent.single_embedding_replay=False  \
+    rlbench.demo_path=/shared/mandi/all_rlbench_data 
+
+    done
+
+    Query_ratio=0.3
+    K_dim=16 
+    RATIO=6 
+    WEI=1
+    E_LR=3e-4
+    for MAR in 5e-2 1
+    do
+    RUN=10Var-Emd16-Encode8-Normed-Mean-Margin${MAR}-Elr${E_LR}
+    taskset -c $CPUS python launch_context.py run_name=${RUN} \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  replay.batch_size=10 \
+    dev.qagent_update_context=True encoder.MODEL.OUT_DIM=4 dev.encode_context=True dev.qnet_context_latent_size=8  \
+    contexts.agent.query_ratio=${Query_ratio} \
+    method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+    framework.replay_ratio=${RATIO} framework.training_iterations=10000 \
+    contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
+    dev.encode_context=False contexts.emb_weight=${WEI} contexts.agent.single_embedding_replay=False  \
+    rlbench.demo_path=/shared/mandi/all_rlbench_data 
+    done
+
+# rtxs1
+    Query_ratio=0.3
+    K_dim=16 
+    RATIO=6 
+    MAR=5e-1
+    E_LR=3e-4
+    for WEI in 10 0.1
+    do
+    RUN=10Var-Emd16-Encode8-Normed-Mean-Margin${MAR}-Elr${E_LR}-Weight${WEI}
+    taskset -c $CPUS python launch_context.py run_name=${RUN} \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  replay.batch_size=10 \
+    dev.qagent_update_context=True encoder.MODEL.OUT_DIM=4 dev.encode_context=True dev.qnet_context_latent_size=8  \
+    contexts.agent.query_ratio=${Query_ratio} \
+    method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+    framework.replay_ratio=${RATIO} framework.training_iterations=10000 \
+    contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
+    dev.encode_context=False contexts.emb_weight=${WEI} contexts.agent.single_embedding_replay=False  \
+    rlbench.demo_path=/shared/mandi/all_rlbench_data 
+    done
+
+    Query_ratio=0.3
+    K_dim=16 
+    RATIO=6 
+    MAR=5e-1
+    E_LR=3e-4
+    WEI=1
+    RUN=10Var-Emd16-Encode8-Normed-Single-Margin${MAR}-Elr${E_LR}-Weight${WEI}
+    taskset -c $CPUS python launch_context.py run_name=${RUN} \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  replay.batch_size=20 \
+    dev.qagent_update_context=True encoder.MODEL.OUT_DIM=4 dev.encode_context=True dev.qnet_context_latent_size=8  \
+    contexts.agent.query_ratio=${Query_ratio} \
+    method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+    framework.replay_ratio=${RATIO} framework.training_iterations=20000 \
+    contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
+    dev.encode_context=False contexts.emb_weight=${WEI} contexts.agent.single_embedding_replay=True \
+    rlbench.demo_path=/shared/mandi/all_rlbench_data 
+
+
+Query_ratio=0.3
+    K_dim=16 
+    RATIO=6 
+    MAR=5e-1
+    E_LR=5e-4
+    for WEI in 100 
+    do
+    RUN=10Var-Emd16-Encode8-Normed-Mean-Margin${MAR}-Elr${E_LR}-Weight${WEI}
+    taskset -c $CPUS python launch_context.py run_name=${RUN} \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  replay.batch_size=10 \
+    dev.qagent_update_context=True encoder.MODEL.OUT_DIM=4 dev.encode_context=True dev.qnet_context_latent_size=8  \
+    contexts.agent.query_ratio=${Query_ratio} \
+    method.emb_lr=${E_LR} contexts.sampler.k_dim=${K_dim} \
+    framework.replay_ratio=${RATIO} framework.training_iterations=10000 \
+    contexts.agent.margin=${MAR} replay.update_buffer_prio=False \
+    dev.encode_context=False contexts.emb_weight=${WEI} contexts.agent.single_embedding_replay=False  \
+    rlbench.demo_path=/shared/mandi/all_rlbench_data 
+    done

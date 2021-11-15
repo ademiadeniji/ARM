@@ -330,14 +330,18 @@ def create_agent_with_context(cfg: DictConfig, env,
     context_agent = ContextAgent(
         embedding_net=embedding_net, 
         camera_names=cfg.rlbench.cameras,
-        one_hot=cfg.dev.one_hot,
+        one_hot=(cfg.dev.one_hot or cfg.dev.noisy_one_hot),
         **cfg.contexts.agent
         )
 
     num_rotation_classes = int(360. // cfg.method.rotation_resolution)
     qattention_agents = []
-    ctxt_size = sum([len(variations) for variations in cfg.rlbench.all_variations]) if cfg.dev.one_hot else \
-        cfg.contexts.agent.embedding_size * 4 
+    if cfg.dev.one_hot:
+        ctxt_size = sum([len(variations) for variations in cfg.rlbench.all_variations]) 
+    elif cfg.dev.noisy_one_hot:
+        ctxt_size = sum([len(variations) for variations in cfg.rlbench.use_variations]) 
+    else: 
+        ctxt_size = cfg.contexts.agent.embedding_size * 4 
     for depth, vox_size in enumerate(cfg.method.voxel_sizes):
         if depth == 0:
             if cfg.dev.use_film:
@@ -437,7 +441,7 @@ def create_agent_with_context(cfg: DictConfig, env,
             pass_down_context=cfg.contexts.pass_down_context,
             use_emb_loss=cfg.dev.qagent_use_emb_loss, 
             emb_weight=cfg.contexts.emb_weight,
-            one_hot=cfg.dev.one_hot,
+            one_hot=(cfg.dev.one_hot or cfg.dev.noisy_one_hot),
         )
         qattention_agents.append(qattention_agent)
 

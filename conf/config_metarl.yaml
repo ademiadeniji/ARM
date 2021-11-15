@@ -43,7 +43,7 @@ framework:
     tensorboard_logging: True
     csv_logging: False
     wandb_logging: True
-    training_iterations: 30000
+    training_iterations: 10000
     gpu: 0
     logdir: '/home/mandi/ARM/log/'
     seeds: 1
@@ -66,6 +66,7 @@ dev:
     qagent_update_context: True
     qagent_use_emb_loss: True # for ablation set to False 
     one_hot: False 
+    noisy_one_hot: False 
     encode_context: True  # if one-hot, prolly ok not to encode
     qnet_context_latent_size: 16
     cat_down1: False
