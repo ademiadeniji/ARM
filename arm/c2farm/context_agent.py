@@ -147,10 +147,8 @@ class ContextAgent(Agent):
         act_result = ActResult(action_embeddings, info={})
         if self._replay_update and output_loss: 
             # self._optimizer.zero_grad()
-            if self._loss_mode == 'hinge':
+            if 'hinge' in self._loss_mode:
                 update_dict = self._compute_hinge_loss(embeddings, val=False)  
-            elif self._loss_mode == 'hinge-v2':
-                update_dict = self._compute_hinge_loss_v2(embeddings, val=False)  
             else:
                 raise NotImplementedError
             
@@ -255,10 +253,8 @@ class ContextAgent(Agent):
         if not val:
             self._optimizer.zero_grad()
          
-        if self._loss_mode == 'hinge':
-            update_dict = self._compute_hinge_loss(embeddings, val=val)
-        elif self._loss_mode == 'hinge-v2':
-            update_dict = self._compute_hinge_loss_v2(embeddings, val=val)
+        if 'hinge' in self._loss_mode:
+            update_dict = self._compute_hinge_loss(embeddings, val=val) 
         else:
             raise NotImplementedError
         self._context_summaries.update({
@@ -309,7 +305,15 @@ class ContextAgent(Agent):
         support_context = support_context / support_context.norm(dim=1, p=2, keepdim=True) # B, d
         similarities = support_context.matmul(query_embeddings.transpose(0, 1))
         similarities = similarities.view(b, b, num_query)  # (B, B, queries)
-
+        #print(similarities.shape, 'previous version shape')
+        if 'hinge-v2' in self._loss_mode: 
+            query_embeddings, _ = embeddings_norm.split([num_query, num_support], dim=1) 
+            dists = torch.cdist(query_embeddings.contiguous(), \
+                    repeat(support_context, 'b d -> b b2 d', b2=b) ) # should give b, num_query, b
+            #print(dists.shape)
+            #assert  dists.transpose(1,2).shape == similarities.shape 
+            similarities = dists.transpose(1,2)
+        
         # Gets the diagonal to give (batch, query)
         diag = torch.eye(b, device=self._device)
         positives = torch.masked_select(similarities, diag.unsqueeze(-1).bool())  # (B * query)
@@ -336,8 +340,14 @@ class ContextAgent(Agent):
             self._embedding_accuracy = accuracy.float().mean()
         
         #print(support_context.shape, support_embeddings[:,0].shape)
-        similarities = support_embeddings[:,0].matmul(query_embeddings.transpose(0, 1))
-        similarities = similarities.view(b, b, num_query)
+        if 'hinge-v2' in self._loss_mode: 
+            dists = torch.cdist(query_embeddings, repeat(support_embeddings[:,0], 'b d -> b b2 d', b2=b) ) # should give b, num_query, b
+            # print(dists.shape)
+            assert  dists.transpose(1,2).shape == similarities.shape 
+            similarities = dists.transpose(1,2)
+        else:
+            similarities = support_embeddings[:,0].matmul(query_embeddings.transpose(0, 1))
+            similarities = similarities.view(b, b, num_query)
         positives = torch.masked_select(similarities, diag.unsqueeze(-1).bool())  # (B * query)
         positives = positives.view(b, 1, num_query)  # (B, 1, query) 
         negatives = torch.masked_select(similarities, diag.unsqueeze(-1) == 0) 
@@ -352,21 +362,6 @@ class ContextAgent(Agent):
             'emd_single_acc':  single_accuracy.float().mean(),
         }
 
-    def _compute_hinge_loss_v2(self, embeddings, val=False):
-        # try just using all the rest embeddings as support, i.e. no torch.split()
-        b, k, d = embeddings.shape 
-        embeddings_norm = embeddings / embeddings.norm(dim=2, p=2, keepdim=True)
-
-        num_query = 1 if val else self._num_query # ugly hack cuz not enough validation data 
-        # num_support = int(k - num_query)
- 
-        
-        query_embeddings = embeddings_norm[:, :num_query].reshape(b * num_query, -1)   
-        support_context = embeddings_norm.mean(1)  # (B, E)
-        support_context = support_context / support_context.norm(dim=1, p=2, keepdim=True) # B, d
-        similarities = support_context.matmul(query_embeddings.transpose(0, 1))
-        similarities = similarities.view(b, b, num_query)  # (B, B, queries)
-  
     def update_train_summaries(self) -> List[Summary]:
         summaries = []
         if self._one_hot:
