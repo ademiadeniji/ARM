@@ -18,7 +18,7 @@ NAME = 'NextBestPoseAgent'
 LOG_STD_MAX = 4
 LOG_STD_MIN = -40
 REPLAY_ALPHA = 0.7
-REPLAY_BETA = 0.5
+REPLAY_BETA = 0.5 
 
 
 class QFunction(nn.Module):

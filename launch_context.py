@@ -202,6 +202,26 @@ def run_seed(
         with open(os.path.join(logdir, 'action_min_max.pkl'), 'wb') as f:
             pickle.dump(action_min_max, f)
 
+    if not (cfg.mt_only or cfg.dev.one_hot or cfg.dev.noisy_one_hot):
+        logging.info('\n Making dataloaders for context batch training')
+        # ctxt_train_loader = make_loader(cfg.contexts, 'train', train_demo_dataset)
+        # ctxt_val_loader  = make_loader(cfg.contexts,'val', val_demo_dataset)
+        train_demo_dataset = PyTorchIterableDemoDataset(
+            demo_dataset=train_demo_dataset,
+            batch_dim=cfg.contexts.sampler.batch_dim,
+            samples_per_variation=cfg.contexts.sampler.k_dim,
+            sample_mode=cfg.contexts.sampler.sample_mode,
+            )
+        val_demo_dataset = PyTorchIterableDemoDataset(
+            demo_dataset=val_demo_dataset,
+            batch_dim=cfg.contexts.sampler.val_batch_dim,
+            samples_per_variation=cfg.contexts.sampler.val_k_dim,
+            sample_mode=cfg.contexts.sampler.sample_mode,
+            )
+    else:
+        logging.info('\n Starting no-context TrainRunner')
+
+
     num_all_vars = sum([len(variations) for variations in cfg.rlbench.all_variations]) 
     # if mt_only, generator doesn't sample context
     rollout_generator = RolloutGeneratorWithContext(
@@ -233,7 +253,7 @@ def run_seed(
         eval_only=cfg.dev.eval_only, # only run eval EnvRunners 
         )  
 
-    if cfg.framework.wandb_logging:
+    if cfg.framework.wandb:
         run = wandb.init(**cfg.wandb)
         run.name = "/".join( cfg.log_path.split('/')[-2:] )
         cfg_dict = {}
@@ -243,26 +263,6 @@ def run_seed(
         run.config.update(cfg_dict)
         run.save()
     
-    
-    if not (cfg.mt_only or cfg.dev.one_hot or cfg.dev.noisy_one_hot):
-        logging.info('\n Making dataloaders for context batch training')
-        # ctxt_train_loader = make_loader(cfg.contexts, 'train', train_demo_dataset)
-        # ctxt_val_loader  = make_loader(cfg.contexts,'val', val_demo_dataset)
-        train_demo_dataset = PyTorchIterableDemoDataset(
-            demo_dataset=train_demo_dataset,
-            batch_dim=cfg.contexts.sampler.batch_dim,
-            samples_per_variation=cfg.contexts.sampler.k_dim,
-            sample_mode=cfg.contexts.sampler.sample_mode,
-            )
-        val_demo_dataset = PyTorchIterableDemoDataset(
-            demo_dataset=val_demo_dataset,
-            batch_dim=cfg.contexts.sampler.val_batch_dim,
-            samples_per_variation=cfg.contexts.sampler.val_k_dim,
-            sample_mode=cfg.contexts.sampler.sample_mode,
-            )
-    else:
-        logging.info('\n Starting no-context TrainRunner')
-
     resume_dir = None
     if cfg.resume:
         resume_dir = join(cfg.resume_path, cfg.resume_run, 'weights', str(cfg.resume_step))
@@ -286,7 +286,7 @@ def run_seed(
         context_cfg=cfg.contexts, 
         train_demo_dataset=train_demo_dataset,
         val_demo_dataset=val_demo_dataset,
-        wandb_logging=cfg.framework.wandb_logging,
+        wandb_logging=cfg.framework.wandb,
         context_device=torch.device("cuda:%d" % (cfg.framework.gpu+1)),
         no_context=cfg.mt_only,
         one_hot=cfg.dev.one_hot,

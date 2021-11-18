@@ -11,7 +11,7 @@ rlbench:
     all_variations: ???  # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
     id_to_tasks: ??? 
     demos: 3
-    demo_path: /home/mandi/all_rlbench_data
+    demo_path: /shared/mandi/all_rlbench_data
     episode_length: 10
     cameras: [front]
     camera_resolution: [128, 128]
@@ -42,7 +42,7 @@ framework:
     transitions_before_train: 100
     tensorboard_logging: True
     csv_logging: False
-    wandb_logging: True
+    wandb: True
     training_iterations: 10000
     gpu: 0
     logdir: '/home/mandi/ARM/log/'
@@ -85,6 +85,7 @@ dev:
     freeze_emb: False  
     single_layer_context: False
     use_film: False 
+    qnet_2_layer_context: False 
 
 contexts:
   num_update_itrs: 5
@@ -99,17 +100,17 @@ contexts:
     is_train: True
     embedding_size: ${encoder.MODEL.OUT_DIM}
     query_ratio: 0.3 # takes this much out of the total K samples 
-    margin:     0.01
+    margin:     0.5
     emb_lambda: 1.0
     save_context: False 
     loss_mode:  'hinge' 
     prod_of_gaus_factors_over_batch: False # for PEARL 
     encoder_cfg: ${encoder}
     replay_update: True
-    single_embedding_replay: True # if False, draw equal amount of embeddings from context 
+    single_embedding_replay: False # if False, draw equal amount of embeddings from context 
   sampler:
     batch_dim:             ${replay.buffers_per_batch}   # dimension 'B' -> this has to match num of buffers
-    k_dim:                 ${replay.batch_size}      # dimension 'K'     -> this doesnt 
+    k_dim:                 12      # dimension 'K'     -> this doesnt 
     drop_last:             True 
     sample_mode:           'variation' # or 'variation'
     val_batch_dim:         10          # actually let's fix this for all sweeping runs to get a fair comparision 

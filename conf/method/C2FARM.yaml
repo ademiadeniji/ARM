@@ -4,7 +4,7 @@ name: 'C2FARM'
 
 lr: 0.0005
 tau: 0.0025
-emb_lr: 0.001
+emb_lr: 0.0005
 
 activation: lrelu
 norm: None

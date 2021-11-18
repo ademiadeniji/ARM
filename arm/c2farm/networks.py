@@ -287,8 +287,12 @@ class Qattention3DNetWithContext(Qattention3DNet):
         if self._use_context:
             if self._encode_context:
                 self._context_preprocess = DenseBlock(
-                    self._inp_context_size, self._encode_context_size, None, self._activation
-                    )
+                    self._inp_context_size, self._encode_context_size, None, self._activation)
+                if self._dev_cfgs.get('qnet_2_layer_context', False):
+                    self._context_preprocess = DenseBlock(
+                        self._inp_context_size, self._encode_context_size * 2, None, self._activation)
+                    self._context_preprocess_2 = DenseBlock(
+                        self._encode_context_size * 2, self._encode_context_size, None, self._activation)
                 d0_ins += self._encode_context_size # exactly the same as how low_dim_size is added
             else:
                 logging.info('Warning - Not encoding context in Qattention3DNetWithContext')
@@ -407,6 +411,8 @@ class Qattention3DNetWithContext(Qattention3DNet):
         
         if self._use_context and self._encode_context:
             ctxt = self._context_preprocess(context) # b, 64 
+            if self._dev_cfgs.get('qnet_2_layer_context', False):
+                ctxt = self._context_preprocess_2(ctxt)
         else:
             ctxt = context 
         # print('networks Qnet forward: ctxt shape', ctxt.shape)

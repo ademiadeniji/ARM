@@ -138,10 +138,12 @@ class ContextAgent(Agent):
         if self.single_embedding_replay:
             action_embeddings = repeat(embeddings[:, 0, :], 'b d -> b k d', b=b, k=k_action) 
         else:
-            # idxs = torch.randint( k, (k_action,) )  #select _with_ replacement 
-            # action_embeddings = embeddings[:, idxs]
-            # NOTE(1101): take mean emb. here instead
-            action_embeddings = repeat(embeddings.mean(dim=1), 'b d -> b k d', b=b, k=k_action)
+            # following tecnet, control uses mean from support emb.!
+            num_query = max(1, int(self._query_ratio * k)) # ugly hack cuz not enough validation data 
+            num_support = int(k - num_query)
+            _, support_embeddings = embeddings.split([num_query, num_support], dim=1)
+            action_embeddings = repeat(
+                support_embeddings.mean(dim=1), 'b d -> b k d', b=b, k=k_action)
         action_embeddings = action_embeddings / action_embeddings.norm(dim=2, p=2, keepdim=True)
         # print('shapes of action embeddings vs embeddings:', action_embeddings.shape, embeddings.shape)
         act_result = ActResult(action_embeddings, info={})
@@ -161,14 +163,17 @@ class ContextAgent(Agent):
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:
         """observation batch may require different input preprocessing, handle here """
-        # print('context agent input:', observation.keys())
-         
+        # print('context agent input:', observation.keys()) 
         data = observation[CONTEXT_KEY].to(self._device)
         if self._one_hot:
             return ActResult(data)
-        #print(data.shape)
-        model_inp = rearrange(data, 'n ch h w -> 1 ch n h w')
-        embeddings = self._embedding_net(model_inp) # should be (1,d)
+        k, n, ch, h, w = data.shape 
+        num_query = max(1, int(self._query_ratio * k)) # ugly hack cuz not enough validation data 
+        num_support = int(k - num_query)
+        _, model_inp = data.split([num_query, num_support], dim=0) # no batch dim here!
+        #print(data.shape) NOTE(1117) should change to shape (k, n, ch, img_h, img_w), doesn't have batch dim. 
+        model_inp = rearrange(data, 'k n ch h w -> k ch n h w')
+        embeddings = self._embedding_net(model_inp).mean(dim=0, keepdim=True) # should be (1,d)
         embeddings = embeddings / embeddings.norm(dim=1, p=2, keepdim=True) 
         self._current_context = embeddings.detach().requires_grad_(False)
         return ActResult(self._current_context)
