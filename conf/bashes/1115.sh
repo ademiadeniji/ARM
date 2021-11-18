@@ -257,7 +257,29 @@
         framework.training_iterations=20000 \
         replay.update_buffer_prio=False \
         dev.single_layer_context=True dev.qnet_2_layer_context=True \
-        contexts.pretrain_replay_steps=2000 dev.freeze_emb=True 
+        contexts.pretrain_replay_steps=2000 dev.freeze_emb=True
+
+# amd2 16x32
+    RUN=10Var-Emd16-2MLPEncode32-1Layer-Single
+    taskset -c $CPUS python launch_context.py run_name=${RUN}  \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  \
+    encoder.MODEL.OUT_DIM=4 dev.qnet_context_latent_size=32 \
+    dev.single_layer_context=True \
+     replay.update_buffer_prio=False  \
+     dev.qnet_2_layer_context=True  framework.training_iterations=50000 \
+     contexts.agent.single_embedding_replay=True 
+
+    RUN=10Var-Emd16-NoEncode-NoHinge-1Layer-Single
+    taskset -c $CPUS python launch_context.py run_name=${RUN}  \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  \
+    encoder.MODEL.OUT_DIM=4 dev.encode_context=False dev.single_layer_context=True \
+     replay.update_buffer_prio=False   framework.training_iterations=50000 \
+     contexts.agent.single_embedding_replay=True contexts.emb_weight=0 
+
         
 
 
+# ti1: classify loss 
+    python launch_context.py tasks=['pick_up_cup'] rlbench.num_vars=10  \
+    contexts.pretrain_replay_steps=1000 \
+    dev.classify=True rlbench.demos=1 dev.offline=True framework.wandb=False replay.batch_size=2

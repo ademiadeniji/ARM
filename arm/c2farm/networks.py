@@ -249,7 +249,6 @@ class Qattention3DNetWithContext(Qattention3DNet):
          
         print(f'Qattention3DNet: Input context embedding size: {inp_context_size}, output size {encode_context_size if encode_context else inp_context_size}')
 
-    
     def build(self):
         block_class = Conv3DInceptionBlock
         upsample_block_class = Conv3DInceptionBlockUpsampleBlock
@@ -396,8 +395,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
                     self._inp_context_size, 
                     self._inp_context_size * 2, None, self._activation)
             self._classify_mlp_2 = DenseBlock(
-                    self._inp_context_size * 2, 
-                    10, None, self._activation)
+                    self._inp_context_size * 2, 10, None, self._activation)
  
     def forward(self, ins, proprio, prev_layer_voxel_grid, context):
         b, _, d, h, w = ins.shape # b, 10, 16, 16, 16
@@ -532,6 +530,11 @@ class Qattention3DNetWithContext(Qattention3DNet):
             })
         
         return trans, rot_and_grip_out, ctxt 
+
+    def classify_only(self, context):
+        pred = self._classify_mlp(context)
+        pred = self._classify_mlp_2(pred)
+        return pred 
 
 class Qattention3DNetWithFiLM(Qattention3DNet):
     """For each Conv3DInceptionBlock, film-encode the context to 

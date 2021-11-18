@@ -26,6 +26,8 @@ from arm.c2farm.context_agent import CONTEXT_KEY
 from yarr.utils.multitask_rollout_generator import TASK_ID, VAR_ID
 NAME = 'QAttention'
 REPLAY_BETA = 1.0
+ONE_HOT_KEY='var_one_hot'
+VAR_ID='variation_id'
 
  
 class QFunction(nn.Module):
@@ -314,6 +316,15 @@ class QAttentionContextAgent(Agent):
              q_rot[:, 2].gather(1, rot_and_grip_idx[:, 2:3]),
              q_grip.gather(1, rot_and_grip_idx[:, 3:4])], -1)
         return rot_and_grip_values
+
+    def classify(self, replay_sample: dict):
+        context = replay_sample['prev_layer_encoded_context'].to(self._device) 
+        target = replay_sample[VAR_ID].long().to(self._device) 
+        pred = self._q._qnet.classify_only(context)
+        # print(context.shape, pred.shape, target.shape)
+        loss = nn.CrossEntropyLoss()
+        return loss(pred, target)
+
 
     def update(self, step: int, replay_sample: dict) -> dict:
         #context_sample = self._preprocess_context_inputs(replay_sample)

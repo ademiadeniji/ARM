@@ -192,12 +192,18 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
             'var_prio': var_priorities  ** REPLAY_ALPHA,
         }
 
-    def update_context_only(self, step: int, replay_sample: dict) -> dict:
+    def update_context_only(self, step: int, replay_sample: dict, classify: bool) -> dict:
         """ Only uses the QAttentionAgent's Optimizer to step hinge loss """
         # raise ValueError # may need to change to using emb optimizer here 
         act_result = self._context_agent.act_for_replay(step, replay_sample, output_loss=True)
         qagent = self._qattention_agents[0]
         emb_loss = act_result.info.get('emb_loss', None).to(qagent._device).mean()
+        replay_sample['prev_layer_encoded_context'] = act_result.action.to(self._device)
+        replay_sample = {k: rearrange(v, 'b k ... -> (b k) ... ') for k, v in replay_sample.items()}
+        if classify: # use qagent's qnet to predict class labels 
+            pred_loss = qagent.classify(replay_sample)
+            emb_loss += pred_loss
+            self._context_agent._replay_summaries['replay_batch/pred_loss'] = pred_loss.mean()
         qagent._optimizer.zero_grad()
         emb_loss.backward()
         qagent._optimizer.step()

@@ -50,15 +50,16 @@ class PreprocessAgent(Agent):
          
         return pose_dict
 
-    def update_context_via_qagent(self, step: int, replay_sample: dict):
+    def update_context_via_qagent(self, step: int, replay_sample: dict, classify: bool):
         for k, v in replay_sample.items():
             if 'rgb' in k:
                 replay_sample[k] = self._norm_rgb_(v) 
-        self._replay_sample = {k: rearrange(v, 'n k ... -> (n k) ...') for k, v in replay_sample.items()} # the stack agent does another reshape, here is just for logging purpose 
+        self._replay_sample = {
+            k: rearrange(v, 'n k ... -> (n k) ...') for k, v in replay_sample.items()} # the stack agent does another reshape, here is just for logging purpose 
         for k, v in replay_sample.items():
             if isinstance(v, torch.Tensor):
                 replay_sample[k] = v.to(self._device) 
-        return self._pose_agent.update_context_only(step, replay_sample)
+        return self._pose_agent.update_context_only(step, replay_sample, classify)
 
     def rebuild_optimizer(self)  -> None:
         agent = self._pose_agent._qattention_agents[0]
