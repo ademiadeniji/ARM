@@ -167,12 +167,15 @@ class ContextAgent(Agent):
         data = observation[CONTEXT_KEY].to(self._device)
         if self._one_hot:
             return ActResult(data)
+        
         k, n, ch, h, w = data.shape 
         num_query = max(1, int(self._query_ratio * k)) # ugly hack cuz not enough validation data 
         num_support = int(k - num_query)
         _, model_inp = data.split([num_query, num_support], dim=0) # no batch dim here!
         #print(data.shape) NOTE(1117) should change to shape (k, n, ch, img_h, img_w), doesn't have batch dim. 
-        model_inp = rearrange(data, 'k n ch h w -> k ch n h w')
+        if self.single_embedding_replay:
+            model_inp = model_inp[0:1,:]
+        model_inp = rearrange(model_inp, 'k n ch h w -> k ch n h w')
         embeddings = self._embedding_net(model_inp).mean(dim=0, keepdim=True) # should be (1,d)
         embeddings = embeddings / embeddings.norm(dim=1, p=2, keepdim=True) 
         self._current_context = embeddings.detach().requires_grad_(False)

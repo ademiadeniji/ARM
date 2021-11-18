@@ -86,6 +86,7 @@ dev:
     single_layer_context: False
     use_film: False 
     qnet_2_layer_context: False 
+    classify: False 
 
 contexts:
   num_update_itrs: 5

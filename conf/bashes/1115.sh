@@ -207,24 +207,57 @@
     RUN=10Var-Emd8-2MLPEncode16-SupportMean-1Layer-
     taskset -c $CPUS python launch_context.py run_name=${RUN} \
         tasks=['pick_up_cup'] rlbench.num_vars=10  \
-        encoder.MODEL.OUT_DIM=4 dev.qnet_context_latent_size=8 \
+        encoder.MODEL.OUT_DIM=2 dev.qnet_context_latent_size=16 \
         framework.training_iterations=30000 \
         replay.update_buffer_prio=False \
         dev.single_layer_context=True dev.qnet_2_layer_context=True 
     
+    RUN=10Var-Emd8-2MLPEncode8-1Layer-Single
+    taskset -c $CPUS python launch_context.py run_name=${RUN}  \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  \
+    encoder.MODEL.OUT_DIM=8 dev.qnet_context_latent_size=8 dev.single_layer_context=True \
+     replay.update_buffer_prio=False  \
+     dev.qnet_2_layer_context=True  framework.training_iterations=50000
+
+
+    RUN=10Var-Resume-Emd8-2MLPEncode16-Normed-1Layer-Single
+    taskset -c $CPUS python launch_context.py run_name=${RUN}  \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  \
+    encoder.MODEL.OUT_DIM=8 dev.qnet_context_latent_size=8 dev.single_layer_context=True \
+     replay.update_buffer_prio=False  \
+     dev.qnet_2_layer_context=True  framework.training_iterations=20000 \
+     resume=True resume_run=pick_up_cup-20var/10Var-Emd8-2MLPEncode16-Normed-1Layer-Single-Margin5e-1-Elr5e-4-Weight1-Replay_B10x6-Q0.3/seed0 \
+    resume_step=3400
 
 # pabti5: margin 0.5 + SupportMean
     RUN=10Var-Emd8-2MLPEncode16-SupportMean-1Layer-Freeze
     taskset -c $CPUS python launch_context.py run_name=${RUN} \
         tasks=['pick_up_cup'] rlbench.num_vars=10  \
-        encoder.MODEL.OUT_DIM=4 dev.qnet_context_latent_size=8 \
-        framework.training_iterations=30000 \
+        encoder.MODEL.OUT_DIM=2 dev.qnet_context_latent_size=16 \
+        framework.training_iterations=20000 \
         replay.update_buffer_prio=False \
         dev.single_layer_context=True dev.qnet_2_layer_context=True \
         contexts.pretrain_replay_steps=2000 dev.freeze_emb=True 
         
         
-        
-        
+    RUN=10Var-Emd8-2MLPEncode16-SupportMean-1Layer-NoHinge
+    taskset -c $CPUS python launch_context.py run_name=${RUN} \
+        tasks=['pick_up_cup'] rlbench.num_vars=10  \
+        encoder.MODEL.OUT_DIM=2 dev.qnet_context_latent_size=16 \
+        framework.training_iterations=20000 \
+        replay.update_buffer_prio=False \
+        dev.single_layer_context=True \
         contexts.emb_weight=0
+
+# txl1 
+    RUN=10Var-Emd16-Encode8-SupportMean-1Layer-Freeze
+    taskset -c $CPUS python launch_context.py run_name=${RUN} \
+        tasks=['pick_up_cup'] rlbench.num_vars=10  \
+        encoder.MODEL.OUT_DIM=4 dev.qnet_context_latent_size=8 \
+        framework.training_iterations=20000 \
+        replay.update_buffer_prio=False \
+        dev.single_layer_context=True dev.qnet_2_layer_context=True \
+        contexts.pretrain_replay_steps=2000 dev.freeze_emb=True 
+        
+
 
