@@ -50,7 +50,7 @@ class PreprocessAgent(Agent):
          
         return pose_dict
 
-    def update_context_via_qagent(self, step: int, replay_sample: dict, classify: bool):
+    def update_context_via_qagent(self, step: int, replay_sample: dict, classify: bool, emb_weight: float):
         for k, v in replay_sample.items():
             if 'rgb' in k:
                 replay_sample[k] = self._norm_rgb_(v) 
@@ -59,7 +59,7 @@ class PreprocessAgent(Agent):
         for k, v in replay_sample.items():
             if isinstance(v, torch.Tensor):
                 replay_sample[k] = v.to(self._device) 
-        return self._pose_agent.update_context_only(step, replay_sample, classify)
+        return self._pose_agent.update_context_only(step, replay_sample, classify, emb_weight)
 
     def rebuild_optimizer(self)  -> None:
         agent = self._pose_agent._qattention_agents[0]

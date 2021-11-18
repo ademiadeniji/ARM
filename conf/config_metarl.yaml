@@ -86,7 +86,8 @@ dev:
     single_layer_context: False
     use_film: False 
     qnet_2_layer_context: False 
-    classify: False 
+    classify: False
+    emb_weight: ${contexts.emb_weight} 
 
 contexts:
   num_update_itrs: 5

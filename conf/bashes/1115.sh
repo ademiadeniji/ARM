@@ -280,6 +280,11 @@
 
 
 # ti1: classify loss 
-    python launch_context.py tasks=['pick_up_cup'] rlbench.num_vars=10  \
-    contexts.pretrain_replay_steps=1000 \
-    dev.classify=True rlbench.demos=1 dev.offline=True framework.wandb=False replay.batch_size=2
+    taskset -c $CPUS  python launch_context.py tasks=['pick_up_cup'] rlbench.num_vars=10  \
+    contexts.pretrain_replay_steps=5000 \
+    dev.classify=True dev.offline=True framework.log_freq=50 
+
+    RUN=10Var-Classify-WeightHinge0-1
+    taskset -c $CPUS  python launch_context.py tasks=['pick_up_cup'] rlbench.num_vars=10  \
+    contexts.pretrain_replay_steps=5000 \
+    dev.classify=True dev.offline=True framework.log_freq=50 contexts.emb_weight=0.1
