@@ -11,7 +11,7 @@ rlbench:
     all_variations: ???  # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
     id_to_tasks: ??? 
     demos: 3
-    demo_path: /shared/mandi/all_rlbench_data
+    demo_path: /home/mandi/all_rlbench_data
     episode_length: 10
     cameras: [front]
     camera_resolution: [128, 128]
@@ -88,6 +88,7 @@ dev:
     qnet_2_layer_context: False 
     classify: False
     emb_weight: ${contexts.emb_weight} 
+    freeze_after_steps: -1 
 
 contexts:
   num_update_itrs: 5
@@ -97,6 +98,7 @@ contexts:
   pretrain_context_steps: 0 
   pretrain_replay_steps: 0 # use replay batch to update context
   emb_weight: 1.0
+  loss_mode: 'hinge'
   agent:
     with_action_context: False
     is_train: True
@@ -105,11 +107,14 @@ contexts:
     margin:     0.5
     emb_lambda: 1.0
     save_context: False 
-    loss_mode:  'hinge' 
+    loss_mode:  ${contexts.loss_mode}
     prod_of_gaus_factors_over_batch: False # for PEARL 
     encoder_cfg: ${encoder}
     replay_update: True
     single_embedding_replay: False # if False, draw equal amount of embeddings from context 
+    tau: 0.01
+    param_update_freq: 10
+    hidden_dim: -1
   sampler:
     batch_dim:             ${replay.buffers_per_batch}   # dimension 'B' -> this has to match num of buffers
     k_dim:                 12      # dimension 'K'     -> this doesnt 

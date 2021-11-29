@@ -279,12 +279,43 @@
         
 
 
-# ti1: classify loss 
+# txl1: classify loss 
     taskset -c $CPUS  python launch_context.py tasks=['pick_up_cup'] rlbench.num_vars=10  \
     contexts.pretrain_replay_steps=5000 \
     dev.classify=True dev.offline=True framework.log_freq=50 
 
-    RUN=10Var-Classify-WeightHinge0-1
+    RUN=10Var-Classify-Emb8
+    taskset -c $CPUS  python launch_context.py run_name=${RUN} tasks=['pick_up_cup'] rlbench.num_vars=10  \
+    contexts.pretrain_replay_steps=5000 encoder.MODEL.OUT_DIM=2  \
+    dev.classify=True dev.offline=True framework.log_freq=50 
+
+    RUN=10Var-Classify-Emb16
+    taskset -c $CPUS  python launch_context.py run_name=${RUN} tasks=['pick_up_cup'] rlbench.num_vars=10  \
+    contexts.pretrain_replay_steps=5000 encoder.MODEL.OUT_DIM=4  \
+    dev.classify=True dev.offline=True framework.log_freq=50  
+
+    # big 256 MLP -> local change 
+    RUN=10Var-Emd16-256x2MLPEncode16-1Layer-Single
+    taskset -c $CPUS python launch_context.py run_name=${RUN}  \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  \
+    encoder.MODEL.OUT_DIM=4 dev.qnet_context_latent_size=16 \
+    dev.single_layer_context=True \
+     replay.update_buffer_prio=False  \
+     dev.qnet_2_layer_context=True  framework.training_iterations=30000 \
+     contexts.agent.single_embedding_replay=True 
+
+    RUN=10Var-Emd8-256x2MLPEncode16-1Layer-Single
+    taskset -c $CPUS python launch_context.py run_name=${RUN}  \
+    tasks=['pick_up_cup'] rlbench.num_vars=10  \
+    encoder.MODEL.OUT_DIM=2 dev.qnet_context_latent_size=16 \
+    dev.single_layer_context=True \
+     replay.update_buffer_prio=False  \
+     dev.qnet_2_layer_context=True  framework.training_iterations=30000 \
+     contexts.agent.single_embedding_replay=True 
+
+
+ # ti1: freeze + classify
+    RUN=10Var-Emb16-Freeze2k-Before-Classify
     taskset -c $CPUS  python launch_context.py tasks=['pick_up_cup'] rlbench.num_vars=10  \
-    contexts.pretrain_replay_steps=5000 \
-    dev.classify=True dev.offline=True framework.log_freq=50 contexts.emb_weight=0.1
+    run_name=${RUN} contexts.pretrain_replay_steps=10000 dev.freeze_after_steps=2000 \
+    dev.classify=True dev.offline=True framework.log_freq=50 

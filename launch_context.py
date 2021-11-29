@@ -343,7 +343,8 @@ def main(cfg: DictConfig) -> None:
         episode_length=cfg.rlbench.episode_length, headless=True, 
         use_variations=variation_idxs, # the tasks may have different num of variations, deal w that later 
         )
-     
+    print('Done creating custom env')
+    
     all_tasks = []
     var_count, use_vars_count = 0, 0
     all_variations = [] 
@@ -374,7 +375,7 @@ def main(cfg: DictConfig) -> None:
         episode_length=cfg.rlbench.episode_length, headless=True,
         use_variations=variation_idxs
         )
-     
+    
     cfg.rlbench.all_tasks = all_tasks
     cfg.rlbench.id_to_tasks = [(i, tsk) for i, tsk in enumerate(all_tasks)]
     cfg.rlbench.all_variations = all_variations

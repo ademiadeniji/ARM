@@ -1,6 +1,6 @@
 import torch 
 
-def make_optimizer(model, cfg, return_params=False):
+def make_optimizer(model, cfg, return_params=False, additional_params=[]):
     """
     Construct a stochastic gradient descent or ADAM optimizer with momentum.
     Details can be found in:
@@ -38,21 +38,19 @@ def make_optimizer(model, cfg, return_params=False):
                 zero_parameters.append(p)
             else:
                 non_bn_parameters.append(p)
-
+    non_bn_parameters += additional_params
     optim_params = [
         {"params": bn_parameters, "weight_decay": cfg.BN.WEIGHT_DECAY},
         {"params": non_bn_parameters, "weight_decay": cfg.OPTIM.WEIGHT_DECAY},
         {"params": zero_parameters, "weight_decay": 0.0},
     ]
-    optim_params = [x for x in optim_params if len(x["params"])]
+    optim_params = [x for x in optim_params if len(x["params"])]  
   
 
     # Check all parameters will be passed into optimizer.
-    assert len(list(model.parameters())) == len(non_bn_parameters) + len(
-        bn_parameters
-    ) + len(zero_parameters) + len(
-        no_grad_parameters
-    ), "parameter size does not match: {} + {} + {} + {} != {}".format(
+    assert len(list(model.parameters())) == \
+        len(non_bn_parameters) + len(bn_parameters) + len(zero_parameters) + len(no_grad_parameters) \
+        - len(additional_params), "parameter size does not match: {} + {} + {} + {} != {}".format(
         len(non_bn_parameters),
         len(bn_parameters),
         len(zero_parameters),

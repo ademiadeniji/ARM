@@ -12,6 +12,10 @@ from arm.models.utils import make_optimizer # tie the optimizer definition close
 from arm import utils
 from omegaconf import DictConfig
 from einops import rearrange, reduce, repeat, parse_shape
+from einops.layers.torch import Rearrange, Reduce
+import torch.nn.functional as F
+from torch import einsum
+from itertools import chain 
 import logging
 from yarr.utils.multitask_rollout_generator import TASK_ID, VAR_ID # use this to get K_action
 
@@ -74,7 +78,10 @@ class ContextAgent(Agent):
                  encoder_cfg: DictConfig = None,
                  one_hot: bool = False,
                  replay_update: bool = True, 
-                 single_embedding_replay: bool = True,
+                 single_embedding_replay: bool = True, 
+                 tau: float = 0.01,
+                 param_update_freq: int = 10,
+                 hidden_dim: int = -1,
                  ):
         self._embedding_net = embedding_net
         self._encoder_cfg = encoder_cfg
@@ -96,6 +103,36 @@ class ContextAgent(Agent):
         self._prod_of_gaus_factors_over_batch = prod_of_gaus_factors_over_batch
         self._name = NAME 
 
+        if 'info' in self._loss_mode:
+            logging.info('Using contrastive infoNCE loss!')
+            self._target_embedding_net = copy.deepcopy(self._embedding_net)
+            
+            emb_dim = embedding_size * 4 # hack 
+            if hidden_dim > 0:
+                self._predictor = nn.Sequential(
+                nn.ReLU(inplace=True),
+                nn.Linear(emb_dim, hidden_dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(hidden_dim, emb_dim),
+                nn.LayerNorm(emb_dim)
+                )
+            else:
+                self._predictor = nn.Sequential(
+                nn.ReLU(inplace=True),
+                nn.Linear(emb_dim, emb_dim),
+                nn.LayerNorm(emb_dim)
+                )
+            self._predictor_target = copy.deepcopy(self._predictor)
+
+            # self._W = nn.Parameter(torch.rand(emb_dim, emb_dim, requires_grad=True)) 
+            self._emb_dim = emb_dim
+            for p in chain(self._target_embedding_net.parameters(), self._predictor_target.parameters()):
+                p.requires_grad = False 
+            
+            self.tau = tau 
+            self.param_update_freq = param_update_freq
+
+
         self._val_loss = None 
         self._val_embedding_accuracy = None 
         self._one_hot = one_hot 
@@ -115,9 +152,17 @@ class ContextAgent(Agent):
         self._zero = torch.tensor(0.0, device=device)
         # use a separate optimizer here to update the params with metric loss,
         # optionally, qattention agents also have optimizers that update the embedding params here
+        additional_params = []
+        if 'info' in self._loss_mode:
+            
+            self._target_embedding_net.set_device(device)
+            self._predictor.to(device)
+            self._predictor_target.to(device)
+            self._W = nn.Parameter(torch.rand(self._emb_dim, self._emb_dim, requires_grad=True, device=device)) 
+            additional_params = [self._W] + [p for p in self._predictor.parameters() if p.requires_grad]
         if training:
             self._optimizer, self._optim_params = make_optimizer(
-                self._embedding_net, self._encoder_cfg, return_params=True)
+                self._embedding_net, self._encoder_cfg, return_params=True, additional_params=additional_params)
  
     def act_for_replay(self, step, replay_sample, output_loss=False):
         """Use this to embed context only for qattention agent update"""
@@ -151,13 +196,19 @@ class ContextAgent(Agent):
             # self._optimizer.zero_grad()
             if 'hinge' in self._loss_mode:
                 update_dict = self._compute_hinge_loss(embeddings, val=False)  
+            elif 'info' in self._loss_mode:
+                embeddings_target = rearrange(
+                    self._target_embedding_net(model_inp),  '(b k) d -> b k d', b=b, k=k)
+                update_dict = self._compute_info_loss(embeddings, embeddings_target, val=False)  
+                if step % self.param_update_freq == 0:
+                    self.soft_param_update()
             else:
                 raise NotImplementedError
             
             act_result = ActResult(action_embeddings, info={'emb_loss': update_dict['emb_loss']})
             self._replay_summaries = {
                     'replay_batch/'+k: torch.mean(v) for k,v in update_dict.items()}
-             
+            
         return act_result
         
     def act(self, step: int, observation: dict,
@@ -210,18 +261,44 @@ class ContextAgent(Agent):
     def load_weights(self, savedir: str):
         device = self._device
         self._embedding_net.load_state_dict(
-            torch.load(os.path.join(savedir, 'embedding_net.pt'), map_location=device))
-
+            torch.load(os.path.join(savedir, 'embedding_net.pt'), map_location=device)
+            )
+        if 'info' in self._loss_mode:
+            self._target_embedding_net.load_state_dict(
+            torch.load(os.path.join(savedir, 'target_embedding_net.pt'), map_location=device)
+            )
+            self._predictor.load_state_dict(
+                torch.load(os.path.join(savedir, 'emb_predictor.pt'), map_location=device)
+            )
+            self._predictor_target.load_state_dict(
+                torch.load(os.path.join(savedir, 'emb_predictor_target.pt'), map_location=device)
+            )
+            self._W = torch.load(os.path.join(savedir, 'emb_W.pt')).to(device)
+            
     def save_weights(self, savedir: str):
         torch.save(
             self._embedding_net.state_dict(),
             os.path.join(savedir, 'embedding_net.pt'))
+        if 'info' in self._loss_mode:
+            torch.save(
+                self._target_embedding_net.state_dict(),
+                os.path.join(savedir, 'target_embedding_net.pt'))
+            torch.save(
+                self._predictor.state_dict(),
+                os.path.join(savedir, 'emb_predictor.pt'))
+            torch.save(
+                self._predictor_target.state_dict(),
+                os.path.join(savedir, 'emb_predictor_target.pt'))
+            torch.save(self._W, os.path.join(savedir, 'emb_W.pt'))
 
-    # def update(self, step, replay_sample: dict) -> dict:
-    #     if self._is_train:
-    #         return self.train_update(step, replay_sample)
-    #     else:
-    #         return self.test_update(step, replay_sample)
+
+    def soft_param_update(self): 
+        tau = self.tau
+        for param, target_param in zip( self._embedding_net.parameters(), self._target_embedding_net.parameters()):
+            target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
+        for param, target_param in zip( self._predictor.parameters(), self._predictor_target.parameters()):
+            target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
+        return
 
     def update_summaries(self) -> List[Summary]:
         if self._is_train:
@@ -370,6 +447,23 @@ class ContextAgent(Agent):
             'emd_single_acc':  single_accuracy.float().mean(),
         }
 
+    def _compute_info_loss(self, embeddings, embeddings_target, val=False):
+        b, k, d = embeddings.shape 
+        z_a     = self._predictor(rearrange(embeddings, 'b k d -> (b k) d'))
+        shuffled_idx = torch.randperm(k)
+        z_pos   = rearrange( embeddings_target[:, shuffled_idx], 'b k d -> (b k) d').detach()
+        #print(z_a.device, self._W.device, z_pos.device)
+        logits = einsum('ad,dd,bd->ab', z_a, self._W, z_pos)
+        # assert logits.shape[0] > img_anc.shape[0], logits.shape # B*T > B
+        logits = logits - reduce(logits, 'a b -> a 1', 'max')
+        labels = torch.arange(logits.shape[0]).long().to(logits.get_device())
+        info_loss = F.cross_entropy(logits, labels, reduction='none')
+        return { 
+            'emb_loss': info_loss.mean(), 
+        }
+
+
+
     def update_train_summaries(self) -> List[Summary]:
         summaries = []
         if self._one_hot:
@@ -410,45 +504,4 @@ class ContextAgent(Agent):
     def update_test_summaries(self) -> List[Summary]:
         return []
 
-    # def train_update(self, step: int, replay_sample: dict) -> dict: 
-    #     if self._current_context is not None:
-    #         b = replay_sample['action'].shape[0]
-    #         return {
-    #             'context': self._current_context.unsqueeze(0).repeat(b, 1),
-    #             'emb_loss': 0
-    #         }
-    #     observations = []
-    #     for n in self._camera_names:
-    #         ob = replay_sample['demo_' + n]
-    #         b, k, t, c, h, w = ob.shape
-    #         ob_seq = self._sequence_strategy.apply(ob.view(b * k, t, -1, h, w))
-    #         if self._with_action_context:
-    #             action = replay_sample['demo_action']
-    #             ab, ak, at, _ = action.shape
-    #             a_seq = self._sequence_strategy.apply(action.view(ab * ak, at, -1))
-    #             action_tiled = a_seq.view(ab * ak, -1, 1, 1).repeat(1, 1, h, w)
-    #             ob_seq = torch.cat((ob_seq, action_tiled), -3)
-    #         observations.append(ob_seq)
-    #     embeddings = self._embedding_net(observations)
-    #     # Assume b and k constant across observations
-    #     embeddings = embeddings.view(b, k, -1)
-    #     if self._loss_mode == 'hinge':
-    #         self._mean_embedding = embeddings.mean()
-    #         return self._compute_hinge_loss(embeddings)
-    #     elif self._loss_mode == 'kl':
-    #         # reference: https://github.com/katerakelly/oyster/blob/cd09c1ae0e69537ca83004ca569574ea80cf3b9c/rlkit/torch/sac/agent.py#L129
-    #         embedding_size = int(self._embedding_size / 2)
-    #         mus = embeddings[..., :embedding_size]
-    #         self._mean_embedding = mus.mean()
-    #         # noinspection PyUnresolvedReferences
-    #         sigmas_squared = torch.clamp(nn.functional.softplus(embeddings[..., embedding_size:]), 1e-7)
-    #         if self._prod_of_gaus_factors_over_batch:
-    #             # reference: https://github.com/katerakelly/oyster/blob/cd09c1ae0e69537ca83004ca569574ea80cf3b9c/rlkit/torch/sac/agent.py#L10
-    #             sigma_sqrd = 1. / torch.sum(torch.reciprocal(sigmas_squared), 1, keepdim=True)
-    #             mu = sigma_sqrd * torch.sum(mus / sigmas_squared, 1, keepdim=True)
-    #         else:
-    #             mu = mus
-    #             sigma_sqrd = sigmas_squared
-    #         return self._compute_kl_loss(mu, sigma_sqrd)
-    #     else:
-    #         raise Exception('Invalid loss mode, must be one of [ hinge | kl ], but found {}'.format(self._loss_mode))
+     
