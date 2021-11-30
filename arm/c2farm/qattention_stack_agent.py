@@ -172,7 +172,7 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
 
         # Samples are (B, K, ...) where we sample B buffers for each batch and get K transitions from each buffer
         # note this K could be different between context part and obs part 
-        replay_sample = {k: rearrange(v, 'b k ... -> (b k) ... ') for k, v in replay_sample.items()}
+        replay_sample = {k: rearrange(v, 'b k ... -> (b k) ... ') for k, v in replay_sample.items() if len(v.shape) > 1}
 
         priorities = 0
         task_priorities, var_priorities = 0, 0 

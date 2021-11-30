@@ -82,6 +82,7 @@ class ContextAgent(Agent):
                  tau: float = 0.01,
                  param_update_freq: int = 10,
                  hidden_dim: int = -1,
+                 replay_update_freq: int = -1,
                  ):
         self._embedding_net = embedding_net
         self._encoder_cfg = encoder_cfg
@@ -102,19 +103,26 @@ class ContextAgent(Agent):
         #   PEARL
         self._prod_of_gaus_factors_over_batch = prod_of_gaus_factors_over_batch
         self._name = NAME 
+        self._replay_update_freq = replay_update_freq # else, freeze emb net update 
 
         if 'info' in self._loss_mode:
             logging.info('Using contrastive infoNCE loss!')
             self._target_embedding_net = copy.deepcopy(self._embedding_net)
             
             emb_dim = embedding_size * 4 # hack 
+            self._hidden_dim = hidden_dim if hidden_dim > 0 else emb_dim
             if hidden_dim > 0:
+                # self._predictor = nn.Sequential(
+                # nn.ReLU(inplace=True),
+                # nn.Linear(emb_dim, hidden_dim),
+                # nn.ReLU(inplace=True),
+                # nn.Linear(hidden_dim, emb_dim),
+                # nn.LayerNorm(emb_dim)
+                # )
                 self._predictor = nn.Sequential(
                 nn.ReLU(inplace=True),
                 nn.Linear(emb_dim, hidden_dim),
-                nn.ReLU(inplace=True),
-                nn.Linear(hidden_dim, emb_dim),
-                nn.LayerNorm(emb_dim)
+                nn.LayerNorm(hidden_dim)
                 )
             else:
                 self._predictor = nn.Sequential(
@@ -158,7 +166,7 @@ class ContextAgent(Agent):
             self._target_embedding_net.set_device(device)
             self._predictor.to(device)
             self._predictor_target.to(device)
-            self._W = nn.Parameter(torch.rand(self._emb_dim, self._emb_dim, requires_grad=True, device=device)) 
+            self._W = nn.Parameter(torch.rand(self._hidden_dim, self._emb_dim, requires_grad=True, device=device)) 
             additional_params = [self._W] + [p for p in self._predictor.parameters() if p.requires_grad]
         if training:
             self._optimizer, self._optim_params = make_optimizer(
@@ -189,7 +197,8 @@ class ContextAgent(Agent):
             _, support_embeddings = embeddings.split([num_query, num_support], dim=1)
             action_embeddings = repeat(
                 support_embeddings.mean(dim=1), 'b d -> b k d', b=b, k=k_action)
-        action_embeddings = action_embeddings / action_embeddings.norm(dim=2, p=2, keepdim=True)
+        if 'info' not in self._loss_mode:
+            action_embeddings = action_embeddings / action_embeddings.norm(dim=2, p=2, keepdim=True)
         # print('shapes of action embeddings vs embeddings:', action_embeddings.shape, embeddings.shape)
         act_result = ActResult(action_embeddings, info={})
         if self._replay_update and output_loss: 
@@ -204,8 +213,10 @@ class ContextAgent(Agent):
                     self.soft_param_update()
             else:
                 raise NotImplementedError
-            
-            act_result = ActResult(action_embeddings, info={'emb_loss': update_dict['emb_loss']})
+            emb_loss = update_dict['emb_loss']
+            if step % self._replay_update_freq != 0:
+                emb_loss *= 0
+            act_result = ActResult(action_embeddings, info={'emb_loss': emb_loss })
             self._replay_summaries = {
                     'replay_batch/'+k: torch.mean(v) for k,v in update_dict.items()}
             
@@ -228,7 +239,8 @@ class ContextAgent(Agent):
             model_inp = model_inp[0:1,:]
         model_inp = rearrange(model_inp, 'k n ch h w -> k ch n h w')
         embeddings = self._embedding_net(model_inp).mean(dim=0, keepdim=True) # should be (1,d)
-        embeddings = embeddings / embeddings.norm(dim=1, p=2, keepdim=True) 
+        if 'info' not in self._loss_mode:
+            embeddings = embeddings / embeddings.norm(dim=1, p=2, keepdim=True) 
         self._current_context = embeddings.detach().requires_grad_(False)
         return ActResult(self._current_context)
         
@@ -290,7 +302,6 @@ class ContextAgent(Agent):
                 self._predictor_target.state_dict(),
                 os.path.join(savedir, 'emb_predictor_target.pt'))
             torch.save(self._W, os.path.join(savedir, 'emb_W.pt'))
-
 
     def soft_param_update(self): 
         tau = self.tau
@@ -453,15 +464,15 @@ class ContextAgent(Agent):
         shuffled_idx = torch.randperm(k)
         z_pos   = rearrange( embeddings_target[:, shuffled_idx], 'b k d -> (b k) d').detach()
         #print(z_a.device, self._W.device, z_pos.device)
-        logits = einsum('ad,dd,bd->ab', z_a, self._W, z_pos)
-        # assert logits.shape[0] > img_anc.shape[0], logits.shape # B*T > B
+        logits = einsum('af,fd,bd->ab', z_a, self._W, z_pos) # shape (Bk, Bk)
         logits = logits - reduce(logits, 'a b -> a 1', 'max')
         labels = torch.arange(logits.shape[0]).long().to(logits.get_device())
         info_loss = F.cross_entropy(logits, labels, reduction='none')
+        
         return { 
-            'emb_loss': info_loss.mean(), 
+            'emb_loss': rearrange(info_loss, '(b k) -> b k', b=b, k=k), 
+            'mean_emb_loss': info_loss.mean(),
         }
-
 
 
     def update_train_summaries(self) -> List[Summary]:

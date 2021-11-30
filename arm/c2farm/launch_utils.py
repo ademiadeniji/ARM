@@ -331,6 +331,7 @@ def create_agent_with_context(cfg: DictConfig, env,
         embedding_net=embedding_net, 
         camera_names=cfg.rlbench.cameras,
         one_hot=(cfg.dev.one_hot or cfg.dev.noisy_one_hot),
+        replay_update_freq=cfg.dev.replay_update_freq,
         **cfg.contexts.agent
         )
 

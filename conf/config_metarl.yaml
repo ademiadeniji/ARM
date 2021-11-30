@@ -89,6 +89,7 @@ dev:
     classify: False
     emb_weight: ${contexts.emb_weight} 
     freeze_after_steps: -1 
+    replay_update_freq: 1 # skip rep. loss during replay update! 
 
 contexts:
   num_update_itrs: 5

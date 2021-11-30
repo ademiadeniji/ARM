@@ -61,7 +61,7 @@ class PreprocessAgent(Agent):
                 replay_sample[k] = v.to(self._device) 
         return self._pose_agent.update_context_only(step, replay_sample, classify, emb_weight)
 
-    def rebuild_optimizer(self)  -> None:
+    def rebuild_optimizer(self) -> None:
         agent = self._pose_agent._qattention_agents[0]
         q_params = agent._q.parameters()
         q_params = [{"params": q_params, 'lr': agent._lr}] 
