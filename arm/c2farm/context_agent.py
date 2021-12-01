@@ -19,6 +19,10 @@ from itertools import chain
 import logging
 from yarr.utils.multitask_rollout_generator import TASK_ID, VAR_ID # use this to get K_action
 
+
+import torchvision.transforms as T
+import torchvision.transforms.functional as TF 
+
 NAME = 'ContextEmbedderAgent'
 CONTEXT_KEY = 'demo_sample'
 

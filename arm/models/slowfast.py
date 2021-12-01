@@ -5,6 +5,10 @@ from functools import partial
 import torch
 import torch.nn as nn
 from torch.nn.init import trunc_normal_
+import sys
+from pathlib import Path
+if str(Path.cwd()) not in sys.path:
+    sys.path.insert(0, str(Path.cwd()))
 
 from arm.models.helpers import * 
 from omegaconf import OmegaConf
@@ -274,7 +278,14 @@ class TempResNet(nn.Module):
 if __name__ == '__main__':
     # test run a model
     model_cfg = OmegaConf.load(\
-        '/home/mandi/ARM/conf/encoders/SlowRes.yaml')
+        '/home/mandi/ARM/conf/encoder/SlowRes.yaml')
     slow_18 = TempResNet(model_cfg)
     inp = torch.ones((1, 3, 2, 128, 128))
     print(slow_18.debug_forward(inp).shape)
+    # torch.Size([1, 1, 64, 2, 32, 32])
+    # torch.Size([1, 256, 2, 32, 32])
+    # torch.Size([1, 256, 2, 32, 32])
+    # torch.Size([1, 512, 2, 16, 16])
+    # torch.Size([1, 1024, 2, 8, 8])
+    # torch.Size([1, 2048, 2, 4, 4])
+    # torch.Size([1, 64])

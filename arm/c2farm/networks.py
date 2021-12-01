@@ -220,6 +220,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
                  use_context: bool = True, 
                  encode_context: bool = True,
                  encode_context_size: int = 16, 
+                 encode_context_hidden: int = -1, 
                  norm: str = None,
                  activation: str = 'relu',
                  dense_feats: int = 32,
@@ -242,6 +243,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
         # self._use_prev_context = use_prev_context 
         self._inp_context_size = inp_context_size
         self._encode_context_size = encode_context_size 
+        self._encode_context_hidden = encode_context_hidden
         self._use_context = use_context 
         self._encode_context = encode_context
         self._dev_cfgs = dev_cfgs
@@ -287,11 +289,11 @@ class Qattention3DNetWithContext(Qattention3DNet):
             if self._encode_context:
                 self._context_preprocess = DenseBlock(
                     self._inp_context_size, self._encode_context_size, None, self._activation)
-                if self._dev_cfgs.get('qnet_2_layer_context', False):
+                if self._encode_context_hidden > 0:
                     self._context_preprocess = DenseBlock(
-                        self._inp_context_size, self._encode_context_size * 2, None, self._activation)
+                        self._inp_context_size, self._encode_context_hidden, None, self._activation)
                     self._context_preprocess_2 = DenseBlock(
-                        self._encode_context_size * 2, self._encode_context_size, None, self._activation)
+                        self._encode_context_hidden, self._encode_context_size, None, self._activation)
                 d0_ins += self._encode_context_size # exactly the same as how low_dim_size is added
             else:
                 logging.info('Warning - Not encoding context in Qattention3DNetWithContext')
@@ -390,12 +392,12 @@ class Qattention3DNetWithContext(Qattention3DNet):
             self._dense2 = DenseBlock(
                 self._dense_feats, self._out_dense, None, None)
 
-        if self._use_context and self._dev_cfgs.get('classify', False):
+        if self._use_context and self._dev_cfgs.get('classify', False): # NOTE: use self._encode_context_size as hidden dim! 
             self._classify_mlp = DenseBlock(
                     self._inp_context_size, 
-                    self._inp_context_size * 2, None, self._activation)
+                    self._encode_context_size, None, self._activation)
             self._classify_mlp_2 = DenseBlock(
-                    self._inp_context_size * 2, 10, None, self._activation)
+                    self._encode_context_size, 10, None, self._activation)
  
     def forward(self, ins, proprio, prev_layer_voxel_grid, context):
         b, _, d, h, w = ins.shape # b, 10, 16, 16, 16
@@ -417,7 +419,7 @@ class Qattention3DNetWithContext(Qattention3DNet):
         
         if self._use_context and self._encode_context:
             ctxt = self._context_preprocess(context) # b, 64 
-            if self._dev_cfgs.get('qnet_2_layer_context', False):
+            if self._encode_context_hidden > 0:
                 ctxt = self._context_preprocess_2(ctxt)
         else:
             ctxt = context 

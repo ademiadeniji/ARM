@@ -19,6 +19,7 @@ from arm.c2farm.qattention_agent import QAttentionAgent
 from arm.c2farm.qattention_agent_with_context import QAttentionContextAgent
 from arm.c2farm.qattention_stack_agent import QAttentionStackAgent, QAttentionStackContextAgent
 from arm.c2farm.context_agent import ContextAgent
+from arm.c2farm.discrete_context_agent import DiscreteContextAgent
 from arm.network_utils import SiameseCNNWithFCModel
 
 from arm.models.slowfast  import TempResNet
@@ -326,14 +327,23 @@ def create_agent_with_context(cfg: DictConfig, env,
     #     activation=cfg.method.activation, # same as c2farm
     #     fc_layers=[64, 64, embedding_size]
     #     )  
-    embedding_net = TempResNet(cfg.encoder)                  
-    context_agent = ContextAgent(
-        embedding_net=embedding_net, 
-        camera_names=cfg.rlbench.cameras,
-        one_hot=(cfg.dev.one_hot or cfg.dev.noisy_one_hot),
-        replay_update_freq=cfg.dev.replay_update_freq,
-        **cfg.contexts.agent
-        )
+     
+    if cfg.dev.discrete:
+        logging.info('Using discrete embedding context!')   
+        context_agent = DiscreteContextAgent(  
+            one_hot=(cfg.dev.one_hot or cfg.dev.noisy_one_hot),
+            replay_update_freq=cfg.dev.replay_update_freq,
+            **cfg.contexts.discrete_agent
+            )             
+    else:
+        embedding_net = TempResNet(cfg.encoder) 
+        context_agent = ContextAgent(
+            embedding_net=embedding_net, 
+            camera_names=cfg.rlbench.cameras,
+            one_hot=(cfg.dev.one_hot or cfg.dev.noisy_one_hot),
+            replay_update_freq=cfg.dev.replay_update_freq,
+            **cfg.contexts.agent
+            )
 
     num_rotation_classes = int(360. // cfg.method.rotation_resolution)
     qattention_agents = []
@@ -345,6 +355,8 @@ def create_agent_with_context(cfg: DictConfig, env,
         ctxt_size = 20
     else: 
         ctxt_size = cfg.contexts.agent.embedding_size * 4 
+        if cfg.dev.discrete:
+            ctxt_size = 256
     for depth, vox_size in enumerate(cfg.method.voxel_sizes):
         if depth == 0:
             if cfg.dev.use_film:

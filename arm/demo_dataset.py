@@ -108,7 +108,7 @@ class RLBenchDemoDataset(Dataset):
         data_augs: dict = {}, 
         split: List[float] = [0.9, 0.1],
         mode: str = 'train',
-
+        defer_transforms: bool = False, # dont do data augs here, defer to agent side!
         ):
         self._obs_config     = obs_config
         self._num_variations = num_variations_per_task
@@ -201,6 +201,12 @@ class RLBenchDemoDataset(Dataset):
         self.val_transforms = transforms.Compose([ # normalize at the end
                             ToTensor(),
                             self.normalize])
+        if defer_transforms:
+            logging.info('Warning! Not doing data augs in the dataset loader')
+        self.aug_transforms = transforms.Compose([ToTensor()])
+        self.val_transforms = transforms.Compose([ToTensor()])
+
+            
          
     # see RLBench.rlbench.environment.Environment   
 

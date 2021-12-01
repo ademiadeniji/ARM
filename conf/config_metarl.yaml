@@ -90,6 +90,7 @@ dev:
     emb_weight: ${contexts.emb_weight} 
     freeze_after_steps: -1 
     replay_update_freq: 1 # skip rep. loss during replay update! 
+    discrete: False 
 
 contexts:
   num_update_itrs: 5
@@ -123,6 +124,12 @@ contexts:
     sample_mode:           'variation' # or 'variation'
     val_batch_dim:         10          # actually let's fix this for all sweeping runs to get a fair comparision 
     val_k_dim: 2                       # dimension 'K', has to limit to 2 due to datasplit
+  discrete_agent:
+    loss_mode:  ${contexts.loss_mode}
+    single_embedding_replay: True
+    replay_update: False # not for dVAE
+    is_train: True
+
 
 dataset:
   image_size:                 [128, 128]
@@ -138,6 +145,7 @@ dataset:
     weak_crop_scale:  [0.7, 0.9]
     weak_crop_ratio:  [0.9, 1]
   split:              [0.9, 0.1] # train/val split
+  defer_transforms:   False 
 
 defaults:
     - method: C2FARM
