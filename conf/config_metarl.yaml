@@ -70,6 +70,7 @@ dev:
     noisy_dim_20: False 
     encode_context: True  # if one-hot, prolly ok not to encode
     qnet_context_latent_size: 16
+    encode_context_hidden: -1
     cat_down1: False
     cat_down2: False
     cat_up1: False 

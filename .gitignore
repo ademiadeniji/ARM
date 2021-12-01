@@ -10,6 +10,7 @@ results/
 rlight.egg-info
 
 # Mandi(New):
+encoder.pkl # pre-trained dVAE, just do local download
 data/
 log/
 cxt_log/

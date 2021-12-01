@@ -60,7 +60,7 @@ class DiscreteContextAgent(Agent):
         if device is None:
             device = torch.device('cpu') 
         if 'dvae' in self._loss_mode:
-            self._embedding_net = load_model("/home/mandi/DALL-E/encoder.pkl", device)
+            self._embedding_net = load_model("/home/mandi/ARM/encoder.pkl", device)
         else:
             raise NotImplementedError 
         self._device = device 
