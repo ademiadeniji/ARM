@@ -1,16 +1,21 @@
 train: 
-  epochs:     100
+  steps:      10000
   log_freq:   100
   log_dir:    '/home/mandi/ARM/cxt_log/'
   overwrite:  False
   log_path:   ???
   run_name:   'burn'
-  save_freq:  1000
-  vis_freq:   2000 # must generate with saved model checkpoints 
+  save_freq:  1000000
+  vis_freq:   2000000 # must generate with saved model checkpoints 
   val_freq:   500
+  val_steps:  50
   use_cpu:    False # in case pabti1 not behaving 
   loss_type:  "hinge"
 
+vq_cfg:
+  n_codes: 10 
+  embedding_size: 2048  
+  latent_dim: 1 
 
 dataset:
   image_size:                 [128, 128]
@@ -29,14 +34,14 @@ dataset:
 
 
 sampler:
-  batch_dim:             10     # dimension 'B'
-  samples_per_variation: 3      # dimension 'N' 
+  batch_dim:             6     # dimension 'B'
+  k_dim: 3      # dimension 'N' 
   drop_last:             True 
   sample_mode:           'variation' # or 'variation'
 
 val_sampler:
-  batch_dim:             5      # actually let's fix this for all sweeping runs to get a fair comparision 
-  samples_per_variation: 2      # dimension 'N', has to limit to 2 due to datasplit
+  batch_dim:             6      # actually let's fix this for all sweeping runs to get a fair comparision 
+  k_dim: 2      # dimension 'N', has to limit to 2 due to datasplit
   drop_last:             True 
   sample_mode:           'variation' # or 'variation'
 

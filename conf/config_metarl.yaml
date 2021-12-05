@@ -11,7 +11,7 @@ rlbench:
     all_variations: ???  # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
     id_to_tasks: ??? 
     demos: 3
-    demo_path: /home/mandi/all_rlbench_data
+    demo_path: /shared/mandi/all_rlbench_data
     episode_length: 10
     cameras: [front]
     camera_resolution: [128, 128]
@@ -124,12 +124,13 @@ contexts:
     drop_last:             True 
     sample_mode:           'variation' # or 'variation'
     val_batch_dim:         10          # actually let's fix this for all sweeping runs to get a fair comparision 
-    val_k_dim: 2                       # dimension 'K', has to limit to 2 due to datasplit
+    val_k_dim:             2           # dimension 'K', has to limit to 2 due to datasplit
   discrete_agent:
     loss_mode:  ${contexts.loss_mode}
     single_embedding_replay: True
     replay_update: False # not for dVAE
     is_train: True
+    one_hot: False 
 
 
 dataset:

@@ -6,8 +6,9 @@ from omegaconf import DictConfig, OmegaConf
 from pyrep.const import RenderMode
 from rlbench import ObservationConfig, CameraConfig
 from multiprocessing import cpu_count
-from arm.demo_dataset import MultiTaskDemoSampler, RLBenchDemoDataset, collate_by_id
+from arm.demo_dataset import MultiTaskDemoSampler, RLBenchDemoDataset, collate_by_id, PyTorchIterableDemoDataset
 from arm.models.slowfast  import TempResNet
+from arm.models.vq_utils import Codebook
 from arm.models.utils import make_optimizer
 from arm.models.vis_utils import generate_tsne
 from einops import rearrange, reduce, repeat, parse_shape
@@ -18,6 +19,21 @@ import torch
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt 
 import wandb 
+
+
+def vq_hinge(model, input, vq_cfg):
+    data = torch.stack([ d.get('front_rgb') for collate_id, d in input.items()] ) 
+    assert len(data.shape) == 6, 'Must be shape (b, n, num_frames, channels, img_h, img_w) '
+    b, k, n, ch, img_h, img_w = data.shape
+    device = model.get_device()
+    model_inp = rearrange(data, 'b k n ch h w -> (b k) ch n h w').to(device)
+    embeddings = model(model_inp) 
+    if vq_cfg.latent_dim == 1:
+        embeddings = rearrange(embeddings, '(b k) d -> b k d 1', b=b, k=k)
+    elif vq_cfg.latent_dim == 3:
+        embeddings = rearrange(model._conv_out, '(b k) d t h w -> b k d (t h w)', b=b, k=k)
+     
+    embeddings_norm = embeddings / embeddings.norm(dim=2, p=2, keepdim=True)
 
 
 def hinge_loss(model, input, hinge_cfg):
@@ -74,6 +90,13 @@ def make_dataset(cfg, mode, obs_config):
         obs_config=obs_config,
         mode=mode,
         **cfg.dataset) 
+    dataset = PyTorchIterableDemoDataset(
+            demo_dataset=dataset,
+            batch_dim=cfg.sampler.batch_dim if mode == 'train' else cfg.val_sampler.batch_dim,
+            samples_per_variation=cfg.sampler.k_dim if mode == 'train' else cfg.val_sampler.k_dim,
+            sample_mode=mode, 
+            )
+
     return dataset
 
 def make_loader(cfg, mode, dataset):
@@ -96,18 +119,20 @@ def make_loader(cfg, mode, dataset):
  
 def validate(model, loss_fn, loss_cfg, step, cfg, dataset):
     # make a new val loader 
-    val_loader = make_loader(cfg, 'val', dataset)
+    # val_loader = make_loader(cfg, 'val', dataset)
+
     model = model.eval() 
     mean_val_loss, val_count = 0, 0
     mean_acc = 0
     model = model.eval()
-    for val_inp in val_loader:
+    for _ in cfg.train.val_steps:
+        val_inp = next(dataset) # assume iterable 
         loss_out = loss_fn(model, val_inp, loss_cfg)
         mean_val_loss += loss_out['loss'].item()
         mean_acc += loss_out['embed_accuracy']
         val_count += 1
     wandb.log(
-        {   'Val At Step': step,
+        {   'Val At Step': i, 
             'Val Loss': (mean_val_loss / val_count),
             'Val Embed Accuracy': (mean_acc / val_count)
     }  
@@ -145,13 +170,19 @@ def main(cfg: DictConfig) -> None:
     if cfg.train.loss_type == "hinge":
         loss_fn = hinge_loss
         loss_cfg = cfg.hinge_cfg
+    elif cfg.train.loss_type == "vq-hinge":
+        loss_fn = vq_hinge 
+        loss_cfg = cfg.vq_cfg 
+        model.codebook = Codebook(
+            n_codes=loss_cfg.n_codes,
+            embedding_size=loss_cfg.embedding_size)
     else:
         raise NotImplementedError
 
     cwd = os.getcwd()
     cfg.train.run_name = "-".join([
         f"{cfg.train.run_name}",
-        f"batch{cfg.sampler.batch_dim}x{cfg.sampler.samples_per_variation}",
+        f"batch{cfg.sampler.batch_dim}x{cfg.sampler.k_dim}",
         f"lr{cfg.encoder.OPTIM.BASE_LR}",
         f"hinge{cfg.hinge_cfg.num_support}x{cfg.hinge_cfg.num_query}"
         ])
@@ -179,52 +210,48 @@ def main(cfg: DictConfig) -> None:
     run.config.update(cfg_dict)
     run.save()
  
-    step = 0
-    for i in range(cfg.train.epochs):
-        # the custom multi-task sampler doesn't refresh properly, hack here
-        train_loader = make_loader(cfg, 'train', train_dataset)
-        val_loader  = make_loader(cfg, 'val', val_dataset)
-        
-        model = model.train()
-        for inputs in train_loader:
-            if step % cfg.train.val_freq == 0:
-                validate(model, loss_fn, loss_cfg, step, cfg, val_dataset)
-                
-            # itr_count += 1
-            optimizer.zero_grad()
-            loss_out = loss_fn(model, inputs, loss_cfg)
-            loss = loss_out['loss']
-            loss.backward()
-            optimizer.step()
-            
-            if step % cfg.train.log_freq == 0:
-                wandb.log({   
-                    'Train Step': step,
-                    'Train Loss': loss.item(),
-                    'Train Embed Accuracy': loss_out['embed_accuracy'],
-                    })
-
-            if step % cfg.train.save_freq == 0:
-                savedir = join(weightsdir, str(step))
-                os.makedirs(savedir, exist_ok=True)
-                torch.save(model.state_dict(), 
-                    os.path.join(savedir, 'checkpoint.pt'))
-            
-                if step % cfg.train.vis_freq == 0:
-                    # gen html file and log to wandb 
-                    generate_tsne(
-                        model, 
-                        step, 
-                        val_dataset, 
-                        log_dir=tsne_dir,
-                        num_task=-1, 
-                        num_vars=-1, 
-                        num_img_frames=min(5, cfg.dataset.num_steps_per_episode))
-
-                        
-
-            step += 1
  
-     
+    train_iter = iter(train_dataset)
+    val_iter = iter(val_dataset)
+    for i in range(cfg.train.steps):
+        # the custom multi-task sampler doesn't refresh properly, hack here
+        # train_loader = make_loader(cfg, 'train', train_dataset)
+        # val_loader  = make_loader(cfg, 'val', val_dataset)  
+        model = model.train()
+        if i % cfg.train.val_freq == 0:
+            validate(model, loss_fn, loss_cfg, i, cfg, val_iter)
+        
+        inputs = next(train_iter)
+        optimizer.zero_grad()
+        loss_out = loss_fn(model, inputs, loss_cfg)
+        loss = loss_out['loss']
+        loss.backward()
+        optimizer.step()
+            
+        if step % cfg.train.log_freq == 0:
+            wandb.log({   
+                'Train Step': i, 
+                'Train Loss': loss.item(),
+                'Train Embed Accuracy': loss_out['embed_accuracy'],
+                })
+
+        if i % cfg.train.save_freq == 0:
+            savedir = join(weightsdir, str(i))
+            os.makedirs(savedir, exist_ok=True)
+            torch.save(model.state_dict(), os.path.join(savedir, 'checkpoint.pt'))
+        
+        if i % cfg.train.vis_freq == 0:
+            # gen html file and log to wandb 
+            generate_tsne(
+                model, 
+                i, 
+                val_dataset, 
+                log_dir=tsne_dir,
+                num_task=-1, 
+                num_vars=-1, 
+                num_img_frames=min(5, cfg.dataset.num_steps_per_episode))
+
+
+    
 if __name__ == '__main__':
     main()

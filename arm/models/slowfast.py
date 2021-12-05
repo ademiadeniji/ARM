@@ -245,6 +245,7 @@ class TempResNet(nn.Module):
         x = self.s3(x) 
         x = self.s4(x) 
         x = self.s5(x) 
+        self._conv_out = x # should be always [2048,2,4,4]
         x = self.head(x)
         return x
 
@@ -270,6 +271,7 @@ class TempResNet(nn.Module):
         x = self.s4(x)
         print(x[0].shape)
         x = self.s5(x)
+        self._conv_out = x[0]
         print(x[0].shape)
         x = self.head(x)
         return x
@@ -279,10 +281,11 @@ if __name__ == '__main__':
     # test run a model
     model_cfg = OmegaConf.load(\
         '/home/mandi/ARM/conf/encoder/SlowRes.yaml')
+    model_cfg.MODEL.OUT_DIM=4
     slow_18 = TempResNet(model_cfg)
     inp = torch.ones((1, 3, 2, 128, 128))
     print(slow_18.debug_forward(inp).shape)
-    # torch.Size([1, 1, 64, 2, 32, 32])
+    # torch.Size([1, 64, 2, 32, 32])
     # torch.Size([1, 256, 2, 32, 32])
     # torch.Size([1, 256, 2, 32, 32])
     # torch.Size([1, 512, 2, 16, 16])

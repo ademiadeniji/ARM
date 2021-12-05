@@ -26,7 +26,7 @@ from yarr.utils.multitask_rollout_generator import TASK_ID, VAR_ID # use this to
 import torchvision.transforms as T
 import torchvision.transforms.functional as TF
 from dall_e  import map_pixels, unmap_pixels, load_model
- 
+from arm.models.vq_utils import Codebook
 CONTEXT_KEY = 'demo_sample'
 
   
@@ -40,18 +40,19 @@ class DiscreteContextAgent(Agent):
                  replay_update: bool = False, 
                  single_embedding_replay: bool = True,  
                  replay_update_freq: int = -1,
+                 embedding_net: nn.Module = None,  
                  ):   
         self._is_train = is_train
         # train time:
         self._current_context = None
         self._loss_mode = loss_mode
-        
+        self._embedding_net = embedding_net
         self._val_loss = None 
         self._val_embedding_accuracy = None 
         self._one_hot = one_hot 
         self._replay_update = replay_update
         self._replay_summaries, self._context_summaries = {}, {}
-        self.single_embedding_replay = single_embedding_replay
+        self.single_embedding_replay = single_embedding_replay 
         logging.info(f'Creating context agent with discrete embeddings')
 
     def build(self, training: bool, device: torch.device = None):
@@ -61,6 +62,9 @@ class DiscreteContextAgent(Agent):
             device = torch.device('cpu') 
         if 'dvae' in self._loss_mode:
             self._embedding_net = load_model("/home/mandi/ARM/encoder.pkl", device)
+        elif 'vqvae' in self._loss_mode:
+            self._codebook = Codebook()
+            self._embedding_net.set_device(device)
         else:
             raise NotImplementedError 
         self._device = device 
@@ -74,8 +78,8 @@ class DiscreteContextAgent(Agent):
     def act_for_replay(self, step, replay_sample, output_loss=False):
         """Use this to embed context only for qattention agent update"""
         data = replay_sample[CONTEXT_KEY].to(self._device) 
-        if self._one_hot:
-            return ActResult(data) 
+        # if self._one_hot:
+        #     return ActResult(data) 
         # NOTE(10/08) now replay sample is also shape (bsize, num_samples, vid_len, 3, 128, 128) 
         # note shape here is (bsize, video_len, 3, 128, 128), preprocess_agent squeezed the task dimension 
         b, k, n, ch, img_h, img_w = data.shape
@@ -89,14 +93,28 @@ class DiscreteContextAgent(Agent):
             model_inp = rearrange(data, 'b k n ch h w -> (b k n) ch h w')
             model_inp = map_pixels(model_inp)
             embeddings = self._embedding_net(model_inp) # shape (bk, K=8192, 16, 16)  
-            embeddings = torch.argmax(embeddings, axis=1).float()
-            embeddings = rearrange(embeddings, '(b k) h w -> b k (h w)', b=b, k=k)
-            assert embeddings.shape[-1] == 256, 'should flatten into 16x16'
+            
+            if self._one_hot:
+                z = torch.argmax(embeddings, axis=1) 
+                embeddings = F.one_hot(z, num_classes=8192).float()
+                embeddings = rearrange(embeddings, '(b k) h w d -> b k (h w d)', b=b, k=k) 
+            else:
+                embeddings = torch.argmax(embeddings, axis=1).float()
+                embeddings = rearrange(embeddings, '(b k) h w -> b k (h w)', b=b, k=k) 
+                assert embeddings.shape[-1] == 256, 'should flatten into 16x16'
+        elif 'vqvae' in self._loss_mode:
+            model_inp = rearrange(data, 'b k n ch h w -> (b k) ch n h w')
+            x = self._embedding_net(model_inp) # shape (b, embed_dim)
+            conv_out = self._embedding_net._conv_out
+            vq_outs = self.codebook(conv_out, update_codebook=(step % self._replay_update_freq != 0))
+            embeddings = rearrange(vq_outs, '(b k) d -> b k d', b=b, k=k) 
 
         if self.single_embedding_replay:
             action_embeddings = repeat(embeddings[:, 0, :], 'b d -> b k d', b=b, k=k_action) 
         else:
-            raise NotImplementedError
+            action_embeddings = repeat(embeddings.mean(dim=1, keepdim=True), 'b 1 d -> b k d', b=b, k=k_action) 
+        if not self._one_hot:
+            action_embeddings /= 8192 # action_embeddings.norm(dim=-1, p=2, keepdim=True) 
         act_result = ActResult(action_embeddings, info={'emb_loss': torch.zeros(action_embeddings.shape)})
         if self._replay_update and output_loss: 
             # self._optimizer.zero_grad()
@@ -114,24 +132,30 @@ class DiscreteContextAgent(Agent):
         """observation batch may require different input preprocessing, handle here """
         # print('context agent input:', observation.keys()) 
         data = observation[CONTEXT_KEY].to(self._device)
-        if self._one_hot:
-            return ActResult(data)
+        # if self._one_hot:
+        #     return ActResult(data)
         
         k, n, ch, h, w = data.shape 
         if self.single_embedding_replay:
             data = data[0:1,:]
             k = 1
-        else:
-            raise NotImplementedError
-        
+         
         if 'dvae' in self._loss_mode:
             assert n == 1, 'pre-trained dvae takes single images'
             model_inp = rearrange(data, 'k n ch h w -> (k n) ch h w')
             model_inp = map_pixels(model_inp)
-            
             embeddings = self._embedding_net(model_inp) # shape (bk, K=8192, 16, 16)  
-            embeddings = torch.argmax(embeddings, axis=1).float()
-            embeddings = rearrange(embeddings, 'kn h w -> kn (h w)')
+            if self._one_hot:
+                z = torch.argmax(embeddings, axis=1)
+                embeddings = F.one_hot(z, num_classes=8192).float()
+                embeddings = rearrange(embeddings, 'kn h w d -> kn (h w d)')
+            else:
+                embeddings = torch.argmax(embeddings, axis=1).float()
+                embeddings = rearrange(embeddings, 'kn h w -> kn (h w)') 
+                embeddings /= 8192 # embeddings / embeddings.norm(dim=-1, p=2, keepdim=True) 
+            
+            embeddings = embeddings.mean(dim=0, keepdim=True)
+            
 
          
         self._current_context = embeddings.detach().requires_grad_(False)
@@ -143,7 +167,7 @@ class DiscreteContextAgent(Agent):
     def load_weights(self, savedir: str):
         device = self._device
         if 'dvae' in self._loss_mode:
-            self._embedding_net = load_model("/home/mandi/DALL-E/encoder.pkl", device)
+            self._embedding_net = load_model("/home/mandi/ARM/encoder.pkl", device)
         else:
             raise NotImplementedError
             
@@ -187,8 +211,8 @@ class DiscreteContextAgent(Agent):
 
     def update_train_summaries(self) -> List[Summary]:
         summaries = []
-        if self._one_hot:
-            return summaries
+        # if self._one_hot:
+        #     return summaries
 
         prefix = 'ContextAgent'
         if self._replay_summaries is not None:

@@ -330,8 +330,7 @@ def create_agent_with_context(cfg: DictConfig, env,
      
     if cfg.dev.discrete:
         logging.info('Using discrete embedding context!')   
-        context_agent = DiscreteContextAgent(  
-            one_hot=(cfg.dev.one_hot or cfg.dev.noisy_one_hot),
+        context_agent = DiscreteContextAgent(   
             replay_update_freq=cfg.dev.replay_update_freq,
             **cfg.contexts.discrete_agent
             )             
@@ -357,6 +356,8 @@ def create_agent_with_context(cfg: DictConfig, env,
         ctxt_size = cfg.contexts.agent.embedding_size * 4 
         if cfg.dev.discrete:
             ctxt_size = 256
+            if cfg.contexts.discrete_agent.one_hot:
+                ctxt_size = 256 * 8192
     for depth, vox_size in enumerate(cfg.method.voxel_sizes):
         if depth == 0:
             if cfg.dev.use_film:
