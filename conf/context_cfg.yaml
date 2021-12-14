@@ -1,21 +1,29 @@
+tasks:        ['pick_up_cup'] 
+loss:         "vq-hinge"
+run_name:     'burn'
 train: 
   steps:      10000
   log_freq:   100
   log_dir:    '/home/mandi/ARM/cxt_log/'
   overwrite:  False
   log_path:   ???
-  run_name:   'burn'
+  run_name:   ${run_name}
   save_freq:  1000000
   vis_freq:   2000000 # must generate with saved model checkpoints 
   val_freq:   500
   val_steps:  50
   use_cpu:    False # in case pabti1 not behaving 
-  loss_type:  "hinge"
+  loss_type:  ${loss}
+  log_wandb: True
 
 vq_cfg:
-  n_codes: 10 
-  embedding_size: 2048  
+  n_codes: 20 
+  embedding_size: 64
   latent_dim: 1 
+  proj_dim: 16 # for hinge loss
+  proj_lr: 3e-4 
+  query_ratio: 0.3
+  margin:      0.01
 
 dataset:
   image_size:                 [128, 128]
@@ -24,7 +32,7 @@ dataset:
   num_episodes_per_variation: 20 # up to 20
   num_steps_per_episode:      2 # 1, 2 for now  
   exclude_tasks:              []
-  include_tasks:              []
+  include_tasks:              ${tasks}
   data_augs:   
     grayscale:        0
     strong_jitter:    0 
@@ -35,13 +43,13 @@ dataset:
 
 sampler:
   batch_dim:             6     # dimension 'B'
-  k_dim: 3      # dimension 'N' 
+  k_dim:                 10      # dimension 'N' 
   drop_last:             True 
   sample_mode:           'variation' # or 'variation'
 
 val_sampler:
   batch_dim:             6      # actually let's fix this for all sweeping runs to get a fair comparision 
-  k_dim: 2      # dimension 'N', has to limit to 2 due to datasplit
+  k_dim:                 2    # dimension 'N', has to limit to 2 due to datasplit
   drop_last:             True 
   sample_mode:           'variation' # or 'variation'
 
@@ -54,7 +62,10 @@ hinge_cfg:
 
 defaults:
   - encoder: SlowRes
+
+
 wandb:
+    project: 'ContextARM'
     job_type: 'train'
     group:    'context'
 

@@ -19,7 +19,7 @@ import torch
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt 
 import wandb 
-
+from arm.network_utils import DenseBlock
 
 def vq_hinge(model, input, vq_cfg):
     data = torch.stack([ d.get('front_rgb') for collate_id, d in input.items()] ) 
@@ -27,14 +27,70 @@ def vq_hinge(model, input, vq_cfg):
     b, k, n, ch, img_h, img_w = data.shape
     device = model.get_device()
     model_inp = rearrange(data, 'b k n ch h w -> (b k) ch n h w').to(device)
-    embeddings = model(model_inp) 
+    embeddings = model(model_inp) # (b k) d 
+    # print(embeddings.shape)
     if vq_cfg.latent_dim == 1:
-        embeddings = rearrange(embeddings, '(b k) d -> b k d 1', b=b, k=k)
+        z = rearrange(embeddings, 'bk c -> bk c 1 1 1')
     elif vq_cfg.latent_dim == 3:
-        embeddings = rearrange(model._conv_out, '(b k) d t h w -> b k d (t h w)', b=b, k=k)
-     
-    embeddings_norm = embeddings / embeddings.norm(dim=2, p=2, keepdim=True)
+        z = model._conv_out
+        assert len(z.shape) == 5, 'conv out should be 3 dim, b*k d t h w'
+    # print(z.shape)
+    vq_out = model.codebook(z=z, update_codebook=True) # TODO: compute hinge loss on conti. embeddings BEFORE codebook
+ 
+    embeddings = vq_out['embeddings'].detach() # always same shape as z, 
 
+    
+    embeddings = rearrange(embeddings, 'bk d t h w -> bk (d t h w)')
+
+    projected = rearrange( model.projector(embeddings), '(b k) d -> b k d', b=b, k=k)
+    embeddings_norm = projected / projected.norm(dim=2, p=2, keepdim=True)
+    
+    # hinge loss like before
+    num_query =  max(1, int(vq_cfg.query_ratio * k)) # ugly hack cuz not enough validation data 
+    num_support = int(k - num_query)
+    query_embeddings, support_embeddings = embeddings_norm.split([num_query, num_support], dim=1)
+    query_embeddings = query_embeddings.reshape(b * num_query, -1) 
+
+    support_context = support_embeddings.mean(1)  # (B, E)
+    support_context = support_context / support_context.norm(
+        dim=1, p=2, keepdim=True)
+    similarities = support_context.matmul(query_embeddings.transpose(0, 1))
+    similarities = similarities.view(b, b, num_query)  # (B, B, queries)
+    print(similarities.max(), similarities.min())
+    
+
+    # Gets the diagonal to give (batch, query)
+    diag = torch.eye(b, device=device) 
+    positives = torch.masked_select(similarities, diag.unsqueeze(-1).bool())  # (B * query)
+    positives = positives.view(b, 1, num_query)  # (B, 1, query)
+
+    negatives = torch.masked_select(similarities, diag.unsqueeze(-1) == 0) # B * B-1 * query 
+
+    
+    #negatives = negatives.view(b, b - 1, -1)
+    negatives = rearrange(negatives, '(b1 b2 q) -> b1 b2 q', b1=b, b2=(b-1))
+
+    delt = positives - negatives 
+    print(positives.min(), negatives.min(), delt.max(), delt.min())
+    
+    loss = torch.max(
+        torch.zeros_like(negatives).to(device), vq_cfg.margin - positives + negatives) # TODO: check why this goes > margin 
+    loss = loss.mean() 
+    print(loss, vq_cfg.margin)
+    raise ValueError 
+
+    # Summaries
+    max_of_negs = negatives.max(1)[0]  # (batch, query)
+    accuracy = positives[:, 0] > max_of_negs
+    embedding_accuracy = accuracy.float().mean()
+
+    out = { 
+        'loss': loss,
+        'embed_accuracy': embedding_accuracy,
+    }
+    out.update(vq_out)
+
+    return out 
 
 def hinge_loss(model, input, hinge_cfg):
      
@@ -94,7 +150,7 @@ def make_dataset(cfg, mode, obs_config):
             demo_dataset=dataset,
             batch_dim=cfg.sampler.batch_dim if mode == 'train' else cfg.val_sampler.batch_dim,
             samples_per_variation=cfg.sampler.k_dim if mode == 'train' else cfg.val_sampler.k_dim,
-            sample_mode=mode, 
+            sample_mode='variation', 
             )
 
     return dataset
@@ -125,19 +181,20 @@ def validate(model, loss_fn, loss_cfg, step, cfg, dataset):
     mean_val_loss, val_count = 0, 0
     mean_acc = 0
     model = model.eval()
-    for _ in cfg.train.val_steps:
+    for _ in range(cfg.train.val_steps):
         val_inp = next(dataset) # assume iterable 
         loss_out = loss_fn(model, val_inp, loss_cfg)
         mean_val_loss += loss_out['loss'].item()
         mean_acc += loss_out['embed_accuracy']
         val_count += 1
-    wandb.log(
+    
+    if cfg.train.log_wandb:
+        wandb.log(
         {   'Val At Step': i, 
             'Val Loss': (mean_val_loss / val_count),
             'Val Embed Accuracy': (mean_acc / val_count)
     }  
     )
-
 
 @hydra.main(config_name='context_cfg', config_path='conf')
 def main(cfg: DictConfig) -> None: 
@@ -174,8 +231,14 @@ def main(cfg: DictConfig) -> None:
         loss_fn = vq_hinge 
         loss_cfg = cfg.vq_cfg 
         model.codebook = Codebook(
+            device=device,
             n_codes=loss_cfg.n_codes,
             embedding_size=loss_cfg.embedding_size)
+        model.projector = DenseBlock(
+            loss_cfg.embedding_size, loss_cfg.proj_dim, norm=None, activation='lrelu').to(device)
+        model.proj_optim = torch.optim.Adam(
+                model.projector.parameters(), lr=loss_cfg.proj_lr,
+                weight_decay=0.000001)
     else:
         raise NotImplementedError
 
@@ -196,19 +259,20 @@ def main(cfg: DictConfig) -> None:
     os.makedirs(tsne_dir, exist_ok=('burn' in log_path or cfg.train.overwrite))
     OmegaConf.save( config=cfg, f=join(log_path, 'config.yaml') )
     
-    print('Initializing wandb run with keywords:', cfg.wandb)
-    run = wandb.init(project='MTARM', **cfg.wandb)
-    run.name = cfg.train.log_path.split('/')[-1]
-    cfg_dict = {}
-    for key in cfg.keys():
-        if key == 'defaults':
-            for sub_key, val in cfg[key]['encoder'].items():
-                cfg_dict['encoder/'+sub_key] = val 
-        else:
-            for sub_key in cfg[key].keys():
-                cfg_dict[key+'/'+sub_key] = cfg[key][sub_key]
-    run.config.update(cfg_dict)
-    run.save()
+    if cfg.train.log_wandb:
+        print('Initializing wandb run with keywords:', cfg.wandb)
+        run = wandb.init(**cfg.wandb)
+        run.name = cfg.train.log_path.split('/')[-1]
+        cfg_dict = {}
+        for key in ['train', 'vq_cfg', 'hinge_cfg', 'dataset', 'sampler']:
+            if key == 'defaults':
+                for sub_key, val in cfg[key]['encoder'].items():
+                    cfg_dict['encoder/'+sub_key] = val 
+            else:
+                for sub_key in cfg[key].keys():
+                    cfg_dict[key+'/'+sub_key] = cfg[key][sub_key]
+        run.config.update(cfg_dict)
+        run.save()
  
  
     train_iter = iter(train_dataset)
@@ -218,38 +282,51 @@ def main(cfg: DictConfig) -> None:
         # train_loader = make_loader(cfg, 'train', train_dataset)
         # val_loader  = make_loader(cfg, 'val', val_dataset)  
         model = model.train()
-        if i % cfg.train.val_freq == 0:
-            validate(model, loss_fn, loss_cfg, i, cfg, val_iter)
+        # if i > 0 and i % cfg.train.val_freq == 0:
+        #     validate(model, loss_fn, loss_cfg, i, cfg, val_iter)
         
         inputs = next(train_iter)
-        optimizer.zero_grad()
-        loss_out = loss_fn(model, inputs, loss_cfg)
-        loss = loss_out['loss']
-        loss.backward()
-        optimizer.step()
+        # print(i)
+        
+        if cfg.train.loss_type == "vq-hinge":
+            optimizer.zero_grad()
+            model.proj_optim.zero_grad()
+            loss_out = loss_fn(model, inputs, loss_cfg) 
+            loss = loss_out['loss'] + loss_out['commitment_loss']
+            loss.backward()
+            model.proj_optim.step()
+            optimizer.step()
+
+        else: 
+            optimizer.zero_grad()
+            loss_out = loss_fn(model, inputs, loss_cfg) 
+            loss = loss_out['loss'] 
+            loss.backward()
+            optimizer.step()
+ 
             
-        if step % cfg.train.log_freq == 0:
-            wandb.log({   
-                'Train Step': i, 
-                'Train Loss': loss.item(),
-                'Train Embed Accuracy': loss_out['embed_accuracy'],
-                })
+        if i % cfg.train.log_freq == 0:
+            tolog = {k: v.mean() for k,v in loss_out.items() if 'loss' in k or 'accuracy' in k}
+            print(tolog)
+            tolog['Train Step'] = i
+            if cfg.train.log_wandb:
+                wandb.log(tolog)
 
         if i % cfg.train.save_freq == 0:
             savedir = join(weightsdir, str(i))
             os.makedirs(savedir, exist_ok=True)
             torch.save(model.state_dict(), os.path.join(savedir, 'checkpoint.pt'))
         
-        if i % cfg.train.vis_freq == 0:
-            # gen html file and log to wandb 
-            generate_tsne(
-                model, 
-                i, 
-                val_dataset, 
-                log_dir=tsne_dir,
-                num_task=-1, 
-                num_vars=-1, 
-                num_img_frames=min(5, cfg.dataset.num_steps_per_episode))
+        # if i % cfg.train.vis_freq == 0:
+        #     # gen html file and log to wandb 
+        #     generate_tsne(
+        #         model, 
+        #         i, 
+        #         val_dataset, 
+        #         log_dir=tsne_dir,
+        #         num_task=-1, 
+        #         num_vars=-1, 
+        #         num_img_frames=min(5, cfg.dataset.num_steps_per_episode))
 
 
     

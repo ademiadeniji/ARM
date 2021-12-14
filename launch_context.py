@@ -186,7 +186,7 @@ def run_seed(
         tasks_vars=cfg.rlbench.use_variations,
         eval_video_fps=30,
         mean_only=True,
-        max_len=3,
+        max_len=cfg.framework.num_log_episodes,
         log_all_vars=cfg.framework.log_all_vars,
         ) 
 
@@ -275,6 +275,7 @@ def run_seed(
         device, 
         stat_accum,
         iterations=cfg.framework.training_iterations,
+        eval_episodes=cfg.framework.eval_episodes,
         save_freq=cfg.framework.save_freq, 
         log_freq=cfg.framework.log_freq, 
         logdir=logdir,
@@ -301,7 +302,10 @@ def run_seed(
         dev_cfg=cfg.dev,
         )
  
-    train_runner.start(resume_dir)
+    if cfg.dev.eval_only:
+        train_runner.evaluate(resume_dir)
+    else:
+        train_runner.start(resume_dir)
     del train_runner
     del env_runner
     torch.cuda.empty_cache()

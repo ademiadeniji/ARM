@@ -167,6 +167,7 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
         # raise ValueError
         act_result = self._context_agent.act_for_replay(step, replay_sample, output_loss=self._qattention_agents[0]._use_emb_loss)
         replay_sample['prev_layer_encoded_context'] = act_result.action.to(self._device)
+        replay_sample['prev_layer_encoded_context_target'] = act_result.info.get('embeddings_target', act_result.action).to(self._device)
         if act_result.info.get('emb_loss', None) is not None:
             replay_sample['emb_loss'] = act_result.info.get('emb_loss')
 

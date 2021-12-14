@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import logging
 from functools import partial 
+import torch.nn.functional as F 
 import sys
 from pathlib import Path
 if str(Path.cwd()) not in sys.path:
@@ -13,6 +14,20 @@ from arm.network_utils import \
     Conv3DBlock, Conv3DUpsampleBlock, \
     Conv3DResNetBlock, Conv3DResNetUpsampleBlock
 from einops import rearrange, reduce, repeat, parse_shape
+
+def sample_gumbel_softmax(context, tau=0.01, eps=1e-20, discrete=True): 
+  """ Draw a sample from the Gumbel-Softmax distribution"""
+  assert len(context.shape) == 2
+  _, d = context.shape 
+  sampled_unif = torch.rand(context.shape)
+  sampled_gumbel = -torch.log(-torch.log(sampled_unif + eps) + eps).to(context.device)
+  y = context + sampled_gumbel
+  sampled = F.softmax( y / tau, dim=1)
+  if discrete:
+      y_hard = F.one_hot( torch.argmax(sampled, axis=1), num_classes=d) 
+      return (y_hard - sampled).detach() + sampled
+
+  return sampled
 
 class Qattention3DNet(nn.Module):
 
@@ -404,6 +419,8 @@ class Qattention3DNetWithContext(Qattention3DNet):
         
         if len(context.shape) == 1: # for acting
             context = rearrange(context, 'c -> 1 c')
+        if self._dev_cfgs.get('discretise', False):
+            context = sample_gumbel_softmax(context)
 
         x = self._input_preprocess(ins)
 

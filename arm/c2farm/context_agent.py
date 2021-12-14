@@ -87,6 +87,7 @@ class ContextAgent(Agent):
                  param_update_freq: int = 10,
                  hidden_dim: int = -1,
                  replay_update_freq: int = -1,
+                 use_target_embedder: bool = False,
                  ):
         self._embedding_net = embedding_net
         self._encoder_cfg = encoder_cfg
@@ -108,6 +109,14 @@ class ContextAgent(Agent):
         self._prod_of_gaus_factors_over_batch = prod_of_gaus_factors_over_batch
         self._name = NAME 
         self._replay_update_freq = replay_update_freq # else, freeze emb net update 
+        self._use_target_embedder = use_target_embedder
+        self.param_update_freq = param_update_freq # use either for infoNCE loss or target embedding net 
+
+        if use_target_embedder:
+            self._embedding_net_target = copy.deepcopy(self._embedding_net)
+            for p in self._embedding_net_target.parameters():
+                p.requires_grad = False
+            
 
         if 'info' in self._loss_mode:
             logging.info('Using contrastive infoNCE loss!')
@@ -139,11 +148,9 @@ class ContextAgent(Agent):
             # self._W = nn.Parameter(torch.rand(emb_dim, emb_dim, requires_grad=True)) 
             self._emb_dim = emb_dim
             for p in chain(self._target_embedding_net.parameters(), self._predictor_target.parameters()):
-                p.requires_grad = False 
-            
+                p.requires_grad = False  
             self.tau = tau 
-            self.param_update_freq = param_update_freq
-
+       
 
         self._val_loss = None 
         self._val_embedding_accuracy = None 
@@ -165,8 +172,7 @@ class ContextAgent(Agent):
         # use a separate optimizer here to update the params with metric loss,
         # optionally, qattention agents also have optimizers that update the embedding params here
         additional_params = []
-        if 'info' in self._loss_mode:
-            
+        if 'info' in self._loss_mode: 
             self._target_embedding_net.set_device(device)
             self._predictor.to(device)
             self._predictor_target.to(device)
@@ -175,6 +181,9 @@ class ContextAgent(Agent):
         if training:
             self._optimizer, self._optim_params = make_optimizer(
                 self._embedding_net, self._encoder_cfg, return_params=True, additional_params=additional_params)
+        
+        if self._use_target_embedder:
+            self._embedding_net_target.set_device(device)
  
     def act_for_replay(self, step, replay_sample, output_loss=False):
         """Use this to embed context only for qattention agent update"""
@@ -220,7 +229,17 @@ class ContextAgent(Agent):
             emb_loss = update_dict['emb_loss']
             if step % self._replay_update_freq != 0:
                 emb_loss *= 0
-            act_result = ActResult(action_embeddings, info={'emb_loss': emb_loss })
+
+            info = {'emb_loss': emb_loss }
+            if self._use_target_embedder:
+                embeddings_target = rearrange(self._embedding_net_target(model_inp),  '(b k) d -> b k d', b=b, k=k)
+                info['embeddings_target'] = embeddings_target 
+                if step % self.param_update_freq == 0: # hard update 
+                    for param, target_param in zip( self._embedding_net.parameters(), self._embedding_net_target.parameters()):
+                        target_param.data.copy_(param.data)
+            
+            act_result = ActResult(
+                action_embeddings, info=info)
             self._replay_summaries = {
                     'replay_batch/'+k: torch.mean(v) for k,v in update_dict.items()}
             
@@ -477,7 +496,6 @@ class ContextAgent(Agent):
             'emb_loss': rearrange(info_loss, '(b k) -> b k', b=b, k=k), 
             'mean_emb_loss': info_loss.mean(),
         }
-
 
     def update_train_summaries(self) -> List[Summary]:
         summaries = []

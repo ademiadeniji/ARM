@@ -1,0 +1,1 @@
+"Copying model architecture from openai's single-frame dVAE"

@@ -20,7 +20,7 @@ BN:
   NORM_TYPE:    "batchnorm"
   WEIGHT_DECAY: 0.0
 DATA:
-  NUM_FRAMES: 2
+  NUM_FRAMES:   1
   SAMPLING_RATE: 8
   TRAIN_JITTER_SCALES: [256, 320]
   TRAIN_CROP_SIZE: 112 # for 256img they used 224, i.e. 87.5% size

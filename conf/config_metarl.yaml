@@ -44,6 +44,7 @@ framework:
     csv_logging: False
     wandb: True
     training_iterations: 10000
+    eval_episodes: 2000
     gpu: 0
     logdir: '/home/mandi/ARM/log/'
     seeds: 1
@@ -54,6 +55,7 @@ framework:
     resume_dir: ''
     log_all_vars: False
     switch_online_tasks: 0
+    num_log_episodes: 5 
 
 
 resume: False
@@ -84,14 +86,15 @@ dev:
     offline: False 
     eval_only: False
     freeze_emb: False  
-    single_layer_context: False
+    single_layer_context: True 
     use_film: False 
     qnet_2_layer_context: False 
     classify: False
     emb_weight: ${contexts.emb_weight} 
     freeze_after_steps: -1 
     replay_update_freq: 1 # skip rep. loss during replay update! 
-    discrete: False 
+    discrete: False  # dVAE context agent
+    discretise: False # for gumbel smax
 
 contexts:
   num_update_itrs: 5
@@ -118,9 +121,10 @@ contexts:
     tau: 0.01
     param_update_freq: 10
     hidden_dim: -1
+    use_target_embedder: False 
   sampler:
     batch_dim:             ${replay.buffers_per_batch}   # dimension 'B' -> this has to match num of buffers
-    k_dim:                 12      # dimension 'K'     -> this doesnt 
+    k_dim:                 10      # dimension 'K'     -> this doesnt 
     drop_last:             True 
     sample_mode:           'variation' # or 'variation'
     val_batch_dim:         10          # actually let's fix this for all sweeping runs to get a fair comparision 
@@ -130,7 +134,15 @@ contexts:
     single_embedding_replay: True
     replay_update: False # not for dVAE
     is_train: True
-    one_hot: False 
+    one_hot:  True 
+    latent_dim: 1 # if 3: use the conv_out 
+    encoder_cfg: ${encoder}
+    query_ratio: 0.3 # takes this much out of the total K samples 
+    margin:     0.5
+    anneal_schedule: 5e-4
+    temp_update_freq: 100
+    discrete_before_hinge: False 
+
 
 
 dataset:
@@ -138,7 +150,7 @@ dataset:
   root_dir:                   ${rlbench.demo_path}
   num_variations_per_task:    -1 # just loads all vars
   num_episodes_per_variation: 20 # up to 20
-  num_steps_per_episode:      2 # 1, 2 for now  
+  num_steps_per_episode:      1 # 1, 2 for now  
   exclude_tasks:              []
   include_tasks:              ${tasks} # OR: set to [] or other options so it loads in more tasks than the trained one
   data_augs:   

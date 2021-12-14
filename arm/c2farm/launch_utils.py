@@ -327,15 +327,16 @@ def create_agent_with_context(cfg: DictConfig, env,
     #     activation=cfg.method.activation, # same as c2farm
     #     fc_layers=[64, 64, embedding_size]
     #     )  
-     
-    if cfg.dev.discrete:
+    embedding_net = TempResNet(cfg.encoder) 
+    if cfg.dev.get('discrete', False):
         logging.info('Using discrete embedding context!')   
         context_agent = DiscreteContextAgent(   
+            embedding_net=embedding_net, 
             replay_update_freq=cfg.dev.replay_update_freq,
             **cfg.contexts.discrete_agent
             )             
     else:
-        embedding_net = TempResNet(cfg.encoder) 
+        
         context_agent = ContextAgent(
             embedding_net=embedding_net, 
             camera_names=cfg.rlbench.cameras,
@@ -354,10 +355,14 @@ def create_agent_with_context(cfg: DictConfig, env,
         ctxt_size = 20
     else: 
         ctxt_size = cfg.contexts.agent.embedding_size * 4 
-        if cfg.dev.discrete:
-            ctxt_size = 256
-            if cfg.contexts.discrete_agent.one_hot:
-                ctxt_size = 256 * 8192
+        if cfg.dev.discrete and cfg.contexts.loss_mode == 'dvae':
+            ctxt_size = 256 * 8192
+            if cfg.dataset.num_steps_per_episode == 4:
+                ctxt_size = 1024 * 8192
+
+        if cfg.dev.discrete and cfg.contexts.loss_mode == 'gumbel' and cfg.contexts.discrete_agent.latent_dim == 3:
+            ctxt_size = 16 * 2048
+
     for depth, vox_size in enumerate(cfg.method.voxel_sizes):
         if depth == 0:
             if cfg.dev.use_film:

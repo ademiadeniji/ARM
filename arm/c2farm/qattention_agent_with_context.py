@@ -325,7 +325,6 @@ class QAttentionContextAgent(Agent):
         loss = nn.CrossEntropyLoss()
         return loss(pred, target)
 
-
     def update(self, step: int, replay_sample: dict) -> dict:
         #context_sample = self._preprocess_context_inputs(replay_sample)
         # each layer Might be also update context embedder's params via here 
@@ -336,6 +335,7 @@ class QAttentionContextAgent(Agent):
         # NOTE(new 10/08): stacker agent handle act_for_replay now 
         # still, later layers cannot update context embeder
         context = replay_sample['prev_layer_encoded_context'].to(self._device) 
+        context_target = replay_sample.get('prev_layer_encoded_context_target', context).to(self._device) 
         emb_loss = replay_sample.get('emb_loss',  None)
         if self._use_emb_loss and not self._one_hot:
             assert emb_loss is not None, 'Context agent should also output loss'
@@ -391,7 +391,7 @@ class QAttentionContextAgent(Agent):
             q_tp1_targ, q_rot_grip_tp1_targ, voxel_grid_tp1_targ, encoded_context_tp1_targ = self._q_target(
                 obs_tp1, proprio_tp1, pcd_tp1, bounds_tp1,
                 replay_sample.get('prev_layer_voxel_grid_tp1', None),
-                context=context
+                context=context_target
                 )
 
             q_tp1, q_rot_grip_tp1, voxel_grid_tp1, encoded_context_tp1 = self._q(
@@ -491,7 +491,8 @@ class QAttentionContextAgent(Agent):
             'prev_layer_voxel_grid': voxel_grid,
             'prev_layer_voxel_grid_tp1': voxel_grid_tp1,
             'prev_layer_encoded_context': encoded_context if self._pass_down_context and encoded_context is not None else context,
-        }
+            'prev_layer_encoded_context_target': encoded_context_tp1_targ if self._pass_down_context and encoded_context_tp1_targ is not None else context_target,
+            }
 
     def act(self, step: int, context_res: ActResult, observation: dict,
             deterministic=False) -> ActResult:
