@@ -86,7 +86,7 @@ dev:
     offline: False 
     eval_only: False
     freeze_emb: False  
-    single_layer_context: True 
+    single_layer_context: True # check with False 
     use_film: False 
     qnet_2_layer_context: False 
     classify: False

@@ -125,20 +125,25 @@ class DiscreteContextAgent(Agent):
         k_action = task_ids.shape[1]
 
         if 'dvae' in self._loss_mode:
-            assert n == 1 or n == 4, f'pre-trained dvae takes single images, not {n}'
+            #assert n == 1 or n == 4, f'pre-trained dvae takes single images, not {n}'
             
             model_inp = rearrange(data, 'b k n ch h w -> (b k n) ch h w')
-            if n == 4: # grid layout!
-                upp = torch.cat([ data[:,:,0], data[:,:,1] ], dim=4)
-                down = torch.cat([ data[:,:,2], data[:,:,3] ], dim=4)
-                data = torch.cat([upp, down], dim=3) # b, k, 3, 256, 256 
-                model_inp = rearrange(data, 'b k ch h w -> (b k) ch h w')
+            # if n == 4: # grid layout!
+            #     upp = torch.cat([ data[:,:,0], data[:,:,1] ], dim=4)
+            #     down = torch.cat([ data[:,:,2], data[:,:,3] ], dim=4)
+            #     data = torch.cat([upp, down], dim=3) # b, k, 3, 256, 256 
+            #     model_inp = rearrange(data, 'b k ch h w -> (b k) ch h w')
             model_inp = map_pixels(model_inp)
             embeddings = self._embedding_net(model_inp) # shape (bk, K=8192, 16, 16)
             if self._one_hot:  
                 z = torch.argmax(embeddings, axis=1) 
                 embeddings = F.one_hot(z, num_classes=8192).float()
-                embeddings = rearrange(embeddings, '(b k) h w d -> b k (h w d)', b=b, k=k) 
+                if n == 1:
+                    embeddings = rearrange(embeddings, '(b k) h w d -> b k (h w d)', b=b, k=k) 
+                else: # use OR
+                    embeddings = rearrange(embeddings, '(b k n) h w d -> b k n (h w d)', b=b, k=k, n=n).sum(2)
+                    embeddings = torch.min(torch.ones_like(embeddings).to(self._device), embeddings)
+                
             else:
                 embeddings = rearrange(embeddings, '(b k) d h w -> b k h w d', b=b, k=k)
                 embeddings = rearrange(embeddings, 'b k h w d -> b k (h w d)')
@@ -201,19 +206,23 @@ class DiscreteContextAgent(Agent):
             k = 1
           
         if 'dvae' in self._loss_mode:
-            assert n == 1 or n == 4, 'pre-trained dvae takes single images'
-            if n == 4: # grid layout!
-                upp = torch.cat([data[:,0], data[:,1]], dim=3)
-                down = torch.cat([data[:,2], data[:,3]], dim=3)
-                model_inp = torch.cat([upp, down], dim=2) # 1, 3, 256, 256 
-            else:
-                model_inp = rearrange(data, 'k n ch h w -> (k n) ch h w')
+            #assert n == 1 or n == 4, 'pre-trained dvae takes single images'
+            # if n == 4: # grid layout!
+            #     upp = torch.cat([data[:,0], data[:,1]], dim=3)
+            #     down = torch.cat([data[:,2], data[:,3]], dim=3)
+            #     model_inp = torch.cat([upp, down], dim=2) # 1, 3, 256, 256 
+            # else:
+            model_inp = rearrange(data, 'k n ch h w -> (k n) ch h w')
             model_inp = map_pixels(model_inp)
             embeddings = self._embedding_net(model_inp) # shape (bk, K=8192, 16, 16)  
             if self._one_hot:  
                 z = torch.argmax(embeddings, axis=1)
                 embeddings = F.one_hot(z, num_classes=8192).float()
-                embeddings = rearrange(embeddings, 'kn h w d -> kn (h w d)')
+                if n > 1:
+                    embeddings = rearrange(embeddings, '(k n) h w d -> k n (h w d)', k=k, n=n).sum(1)
+                    embeddings = torch.min(torch.ones_like(embeddings).to(self._device), embeddings)
+                else:
+                    embeddings = rearrange(embeddings, 'kn h w d -> kn (h w d)')
             else:
                 embeddings = rearrange(embeddings, 'kn d h w -> kn h w d')
                 embeddings = rearrange(embeddings, 'kn h w d -> kn (h w d)')

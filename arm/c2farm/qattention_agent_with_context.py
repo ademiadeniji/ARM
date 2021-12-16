@@ -381,7 +381,7 @@ class QAttentionContextAgent(Agent):
             obs, proprio, pcd, 
             bounds=bounds,
             prev_layer_voxel_grid=replay_sample.get('prev_layer_voxel_grid', None),
-            context=context,
+            context=context, # NOTE(try using context_target here!)
             )
         coords, rot_and_grip_indicies = self._q.choose_highest_action(q, q_rot_grip)
 
@@ -397,7 +397,8 @@ class QAttentionContextAgent(Agent):
             q_tp1, q_rot_grip_tp1, voxel_grid_tp1, encoded_context_tp1 = self._q(
                 obs_tp1, proprio_tp1, pcd_tp1, bounds_tp1,
                 prev_layer_voxel_grid=replay_sample.get('prev_layer_voxel_grid_tp1', None),
-                context=context)
+                context=context_target 
+                )
             coords_tp1, rot_and_grip_indicies_tp1 = self._q.choose_highest_action(q_tp1, q_rot_grip_tp1)
 
             q_tp1_at_voxel_idx = self._get_value_from_voxel_index(q_tp1_targ, coords_tp1)

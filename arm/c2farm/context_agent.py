@@ -141,7 +141,7 @@ class ContextAgent(Agent):
                 self._predictor = nn.Sequential(
                 nn.ReLU(inplace=True),
                 nn.Linear(emb_dim, emb_dim),
-                nn.LayerNorm(emb_dim)
+                nn.LayerNorm(emb_dim) # careful trying w/ and w/o layernorm 
                 )
             self._predictor_target = copy.deepcopy(self._predictor)
 
