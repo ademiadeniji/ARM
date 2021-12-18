@@ -435,7 +435,9 @@ class Qattention3DNetWithContext(Qattention3DNet):
             x = torch.cat([x, p], dim=1)
         
         if self._use_context and self._encode_context:
+             
             ctxt = self._context_preprocess(context) # b, 64 
+
             if self._encode_context_hidden > 0:
                 ctxt = self._context_preprocess_2(ctxt)
         else:

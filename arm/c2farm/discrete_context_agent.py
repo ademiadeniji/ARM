@@ -99,7 +99,9 @@ class DiscreteContextAgent(Agent):
             if self._dev_cfg.get('use_conv', False):
                 self.conv3d = nn.Conv3d(
                     in_channels=8192, out_channels=self._dev_cfg.conv_out, 
-                    kernel_size=tuple(self._dev_cfg.conv_kernel), stride=1).to(device)
+                    kernel_size=tuple(self._dev_cfg.conv_kernel), 
+                    stride=self._dev_cfg.stride
+                    ).to(device)
                 self._optim_params = [ {"params": self.conv3d.parameters() } ]
         elif 'vqvae' in self._loss_mode:
             self._codebook = Codebook() 

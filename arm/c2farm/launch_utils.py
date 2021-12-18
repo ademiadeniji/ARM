@@ -359,7 +359,8 @@ def create_agent_with_context(cfg: DictConfig, env,
             ctxt_size = 256 * 8192
             if cfg.cdev.use_conv:
                 _, h, w = cfg.cdev.conv_kernel
-                ctxt_size = int( (16-h+1)*(16-w+1)*cfg.cdev.conv_out)
+                s = cfg.cdev.stride
+                ctxt_size = int( ((16-h+1)/s) * ((16-w+1)/s) *cfg.cdev.conv_out)
             # if cfg.dataset.num_steps_per_episode == 4:
             #     ctxt_size = 1024 * 8192
 
