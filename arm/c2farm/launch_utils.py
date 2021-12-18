@@ -357,8 +357,11 @@ def create_agent_with_context(cfg: DictConfig, env,
         ctxt_size = cfg.contexts.agent.embedding_size * 4 
         if cfg.dev.discrete and cfg.contexts.loss_mode == 'dvae':
             ctxt_size = 256 * 8192
-            if cfg.dataset.num_steps_per_episode == 4:
-                ctxt_size = 1024 * 8192
+            if cfg.cdev.use_conv:
+                _, h, w = cfg.cdev.conv_kernel
+                ctxt_size = int( (16/h)*(16/w)*cfg.cdev.conv_out)
+            # if cfg.dataset.num_steps_per_episode == 4:
+            #     ctxt_size = 1024 * 8192
 
         if cfg.dev.discrete and cfg.contexts.loss_mode == 'gumbel' and cfg.contexts.discrete_agent.latent_dim == 3:
             ctxt_size = 16 * 2048

@@ -64,6 +64,7 @@ class DiscreteContextAgent(Agent):
                  query_ratio: float = 0.3,
                  margin: float = 0.1,
                  discrete_before_hinge: bool = False, 
+                 dev_cfg: dict = {},
                  ):   
         self._is_train = is_train
         # train time:
@@ -83,6 +84,7 @@ class DiscreteContextAgent(Agent):
         self.tau = 1 
         self._query_ratio, self._margin = query_ratio, margin 
         self.discrete_before_hinge = discrete_before_hinge
+        self._dev_cfg = dev_cfg 
         logging.info(f'Creating context agent with discrete embeddings')
 
     def build(self, training: bool, device: torch.device = None):
@@ -94,6 +96,11 @@ class DiscreteContextAgent(Agent):
         
         if 'dvae' in self._loss_mode:
             self._embedding_net = load_model("/home/mandi/ARM/encoder.pkl", device)
+            if self._dev_cfg.get('use_conv', False):
+                self.conv3d = nn.Conv3d(
+                    in_channels=8192, out_channels=self._dev_cfg.conv_out, 
+                    kernel_size=tuple(self._dev_cfg.conv_kernel), stride=1).to(device)
+                self._optim_params = [ {"params": self.conv3d.parameters() } ]
         elif 'vqvae' in self._loss_mode:
             self._codebook = Codebook() 
 
@@ -125,8 +132,7 @@ class DiscreteContextAgent(Agent):
         k_action = task_ids.shape[1]
 
         if 'dvae' in self._loss_mode:
-            #assert n == 1 or n == 4, f'pre-trained dvae takes single images, not {n}'
-            
+            #assert n == 1 or n == 4, f'pre-trained dvae takes single images, not {n}' 
             model_inp = rearrange(data, 'b k n ch h w -> (b k n) ch h w')
             # if n == 4: # grid layout!
             #     upp = torch.cat([ data[:,:,0], data[:,:,1] ], dim=4)
@@ -135,18 +141,20 @@ class DiscreteContextAgent(Agent):
             #     model_inp = rearrange(data, 'b k ch h w -> (b k) ch h w')
             model_inp = map_pixels(model_inp)
             embeddings = self._embedding_net(model_inp) # shape (bk, K=8192, 16, 16)
-            if self._one_hot:  
-                z = torch.argmax(embeddings, axis=1) 
-                embeddings = F.one_hot(z, num_classes=8192).float()
-                if n == 1:
-                    embeddings = rearrange(embeddings, '(b k) h w d -> b k (h w d)', b=b, k=k) 
-                else: # use OR
+            
+            z = torch.argmax(embeddings, axis=1) 
+            embeddings = F.one_hot(z, num_classes=8192).float()
+            if n == 1:
+                embeddings = rearrange(embeddings, '(b k) h w d -> b k (h w d)', b=b, k=k) 
+            else: # use OR
+                if self._dev_cfg.get('use_conv', False):
+                    embeddings = self.conv3d( rearrange(embeddings, '(bk n) h w d -> bk d n h w', bk=b*k, n=n) ) # -> b k d' 1 h' w'
+                    embeddings = rearrange(embeddings, '(b k) d n h w -> b k (d n h w)', b=b, k=k)
+                else:
                     embeddings = rearrange(embeddings, '(b k n) h w d -> b k n (h w d)', b=b, k=k, n=n).sum(2)
-                    embeddings = torch.min(torch.ones_like(embeddings).to(self._device), embeddings)
+                    embeddings = torch.min(torch.ones_like(embeddings).to(self._device), embeddings) # -> b k (d h w)
                 
-            else:
-                embeddings = rearrange(embeddings, '(b k) d h w -> b k h w d', b=b, k=k)
-                embeddings = rearrange(embeddings, 'b k h w d -> b k (h w d)')
+             
             action_embeddings = repeat(embeddings[:, 0, :], 'b d -> b k d', b=b, k=k_action)
             act_result = ActResult(action_embeddings, info={'emb_loss': torch.zeros(action_embeddings.shape)})
 
@@ -215,19 +223,21 @@ class DiscreteContextAgent(Agent):
             model_inp = rearrange(data, 'k n ch h w -> (k n) ch h w')
             model_inp = map_pixels(model_inp)
             embeddings = self._embedding_net(model_inp) # shape (bk, K=8192, 16, 16)  
-            if self._one_hot:  
-                z = torch.argmax(embeddings, axis=1)
-                embeddings = F.one_hot(z, num_classes=8192).float()
-                if n > 1:
+             
+            z = torch.argmax(embeddings, axis=1)
+            embeddings = F.one_hot(z, num_classes=8192).float()
+            if n > 1:
+                if self._dev_cfg.get('use_conv', False):
+                    embeddings = self.conv3d( rearrange(embeddings, '(k n) h w d -> k d n h w', k=k, n=n) ) # -> b k d' 1 h' w'
+                    embeddings = rearrange(embeddings, 'k d n h w -> k (d n h w)')
+                else:
                     embeddings = rearrange(embeddings, '(k n) h w d -> k n (h w d)', k=k, n=n).sum(1)
                     embeddings = torch.min(torch.ones_like(embeddings).to(self._device), embeddings)
-                else:
-                    embeddings = rearrange(embeddings, 'kn h w d -> kn (h w d)')
             else:
-                embeddings = rearrange(embeddings, 'kn d h w -> kn h w d')
                 embeddings = rearrange(embeddings, 'kn h w d -> kn (h w d)')
+             
               
-            embeddings = embeddings.mean(dim=0, keepdim=True)
+            embeddings = embeddings.mean(dim=0, keepdim=True) # k=1 anyway
 
         elif 'gumbel' in self._loss_mode:
             model_inp = rearrange(data[0:1, :],  'k n ch h w -> k ch n h w' )# just take sample 

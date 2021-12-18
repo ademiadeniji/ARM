@@ -254,7 +254,7 @@ def run_seed(
         )  
 
     if cfg.framework.wandb:
-        run = wandb.init(**cfg.wandb)
+        run = wandb.init(**cfg.wandb)  
         run.name = "/".join( cfg.log_path.split('/')[-2:] )
         cfg_dict = {}
         for key in LOG_CONFIG_KEYS:
