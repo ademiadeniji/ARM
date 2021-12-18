@@ -28,6 +28,7 @@ import torchvision.transforms.functional as TF
 from dall_e  import map_pixels, unmap_pixels, load_model
 from arm.models.vq_utils import Codebook
 CONTEXT_KEY = 'demo_sample'
+LRELU_SLOPE = 0.02 
 
 def sample_gumbel_softmax(z, tau=0.01, eps=1e-20): 
   """ Draw a sample from the Gumbel-Softmax distribution"""
@@ -102,6 +103,11 @@ class DiscreteContextAgent(Agent):
                     kernel_size=tuple(self._dev_cfg.conv_kernel), 
                     stride=self._dev_cfg.stride
                     ).to(device)
+                nn.init.kaiming_uniform_(self.conv3d.weight, a=LRELU_SLOPE,
+                                     nonlinearity='leaky_relu')
+                nn.init.zeros_(self.conv3d.bias)
+                self.activate = nn.LeakyReLU(negative_slope=LRELU_SLOPE)
+
                 self._optim_params = [ {"params": self.conv3d.parameters() } ]
         elif 'vqvae' in self._loss_mode:
             self._codebook = Codebook() 
@@ -150,7 +156,10 @@ class DiscreteContextAgent(Agent):
                 embeddings = rearrange(embeddings, '(b k) h w d -> b k (h w d)', b=b, k=k) 
             else: # use OR
                 if self._dev_cfg.get('use_conv', False):
-                    embeddings = self.conv3d( rearrange(embeddings, '(bk n) h w d -> bk d n h w', bk=b*k, n=n) ) # -> b k d' 1 h' w'
+                    embeddings = self.activate(
+                        self.conv3d( rearrange(embeddings, '(bk n) h w d -> bk d n h w', bk=b*k, n=n) )
+                     ) # -> b k d' 1 h' w'
+                    
                     embeddings = rearrange(embeddings, '(b k) d n h w -> b k (d n h w)', b=b, k=k)
                 else:
                     embeddings = rearrange(embeddings, '(b k n) h w d -> b k n (h w d)', b=b, k=k, n=n).sum(2)
@@ -230,7 +239,9 @@ class DiscreteContextAgent(Agent):
             embeddings = F.one_hot(z, num_classes=8192).float()
             if n > 1:
                 if self._dev_cfg.get('use_conv', False):
-                    embeddings = self.conv3d( rearrange(embeddings, '(k n) h w d -> k d n h w', k=k, n=n) ) # -> b k d' 1 h' w'
+                    embeddings = self.activate(
+                        self.conv3d( rearrange(embeddings, '(k n) h w d -> k d n h w', k=k, n=n) ) 
+                        )# -> b k d' 1 h' w'
                     embeddings = rearrange(embeddings, 'k d n h w -> k (d n h w)')
                 else:
                     embeddings = rearrange(embeddings, '(k n) h w d -> k n (h w d)', k=k, n=n).sum(1)
