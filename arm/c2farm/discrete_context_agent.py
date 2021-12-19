@@ -156,17 +156,28 @@ class DiscreteContextAgent(Agent):
                 embeddings = rearrange(embeddings, '(b k) h w d -> b k (h w d)', b=b, k=k) 
             else: # use OR
                 if self._dev_cfg.get('use_conv', False):
-                    embeddings = self.activate(
-                        self.conv3d( rearrange(embeddings, '(bk n) h w d -> bk d n h w', bk=b*k, n=n) )
-                     ) # -> b k d' 1 h' w'
+                    assert k == 1
+                    if self._dev_cfg.get('pass_3d', False):
+                        #print(embeddings.shape)
+                        #print(rearrange(embeddings, '(bk n) h w d -> bk d n h w', bk=b*k, n=n).shape )
+                        embeddings = rearrange(embeddings, '(b k n) h w d -> b k d n h w', b=b, k=k, n=n)
+                        #print(embeddings.shape)
+                        # embeddings = rearrange(embeddings, 'b k n d h w -> b k d n h w', b=b, k=k, n=n)
+                    else:
+                        embeddings = self.activate(
+                            self.conv3d( rearrange(embeddings, '(bk n) h w d -> bk d n h w', bk=b*k, n=n) )
+                        ) # -> b k d' 1 h' w'
                     
-                    embeddings = rearrange(embeddings, '(b k) d n h w -> b k (d n h w)', b=b, k=k)
+                        embeddings = rearrange(embeddings, '(b k) d n h w -> b k (d n h w)', b=b, k=k)
                 else:
                     embeddings = rearrange(embeddings, '(b k n) h w d -> b k n (h w d)', b=b, k=k, n=n).sum(2)
                     embeddings = torch.min(torch.ones_like(embeddings).to(self._device), embeddings) # -> b k (d h w)
                 
              
-            action_embeddings = repeat(embeddings[:, 0, :], 'b d -> b k d', b=b, k=k_action)
+            if self._dev_cfg.get('pass_3d', False):
+                action_embeddings = repeat(embeddings[:, 0, :], 'b d n h w -> b k d n h w', b=b, k=k_action)
+            else:
+                action_embeddings = repeat(embeddings[:, 0, :], 'b d -> b k d', b=b, k=k_action)
             act_result = ActResult(action_embeddings, info={'emb_loss': torch.zeros(action_embeddings.shape)})
 
         elif 'gumbel' in self._loss_mode:
@@ -239,10 +250,14 @@ class DiscreteContextAgent(Agent):
             embeddings = F.one_hot(z, num_classes=8192).float()
             if n > 1:
                 if self._dev_cfg.get('use_conv', False):
-                    embeddings = self.activate(
-                        self.conv3d( rearrange(embeddings, '(k n) h w d -> k d n h w', k=k, n=n) ) 
-                        )# -> b k d' 1 h' w'
-                    embeddings = rearrange(embeddings, 'k d n h w -> k (d n h w)')
+                    if self._dev_cfg.get('pass_3d', False):
+                        assert k == 1
+                        embeddings = rearrange(embeddings, '(k n) h w d -> k d n h w', k=k, n=n)
+                    else:
+                        embeddings = self.activate(
+                            self.conv3d( rearrange(embeddings, '(k n) h w d -> k d n h w', k=k, n=n) ) 
+                            )# -> b k d' 1 h' w'
+                        embeddings = rearrange(embeddings, 'k d n h w -> k (d n h w)')
                 else:
                     embeddings = rearrange(embeddings, '(k n) h w d -> k n (h w d)', k=k, n=n).sum(1)
                     embeddings = torch.min(torch.ones_like(embeddings).to(self._device), embeddings)
@@ -276,6 +291,10 @@ class DiscreteContextAgent(Agent):
         device = self._device
         if 'dvae' in self._loss_mode:
             self._embedding_net = load_model("/home/mandi/ARM/encoder.pkl", device)
+            if self._dev_cfg.get('use_conv', False) and not self._dev_cfg.get('pass_3d' , False):
+                self.conv3d.load_state_dict(
+                torch.load(os.path.join(savedir, 'embedding_net.pt'), map_location=device)
+                )
         elif 'gumbel' in self._loss_mode:
             self._embedding_net.load_state_dict(
                 torch.load(os.path.join(savedir, 'embedding_net.pt'), map_location=device)
@@ -285,7 +304,11 @@ class DiscreteContextAgent(Agent):
             
     def save_weights(self, savedir: str):
         if 'dvae' in self._loss_mode:
-            pass 
+            if self._dev_cfg.get('use_conv', False) and not self._dev_cfg.get('pass_3d' , False):
+                torch.save(
+                self.conv3d.state_dict(),
+                os.path.join(savedir, 'embedding_net.pt'))
+             
         elif 'gumbel' in self._loss_mode:
             torch.save(
                 self._embedding_net.state_dict(),

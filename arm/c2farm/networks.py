@@ -14,7 +14,7 @@ from arm.network_utils import \
     Conv3DBlock, Conv3DUpsampleBlock, \
     Conv3DResNetBlock, Conv3DResNetUpsampleBlock
 from einops import rearrange, reduce, repeat, parse_shape
-
+LRELU_SLOPE = 0.02 
 def sample_gumbel_softmax(context, tau=0.01, eps=1e-20, discrete=True): 
   """ Draw a sample from the Gumbel-Softmax distribution"""
   assert len(context.shape) == 2
@@ -302,6 +302,16 @@ class Qattention3DNetWithContext(Qattention3DNet):
         # Note context size can also equal _kernels if this is intermediate net and use_prev_context is True 
         if self._use_context:
             if self._encode_context:
+                if self._dev_cfgs.get('ctxt_conv3d', False):
+                    self.ctxt_conv3d = nn.Conv3d(
+                    in_channels=8192, out_channels=512, 
+                    kernel_size=[3,1,1], 
+                    stride=2)
+                nn.init.kaiming_uniform_(self.ctxt_conv3d.weight, a=LRELU_SLOPE,
+                                     nonlinearity='leaky_relu')
+                nn.init.zeros_(self.ctxt_conv3d.bias)
+                self.ctxt_activate = nn.LeakyReLU(negative_slope=LRELU_SLOPE)
+
                 self._context_preprocess = DenseBlock(
                     self._inp_context_size, self._encode_context_size, None, self._activation)
                 if self._encode_context_hidden > 0:
@@ -435,7 +445,11 @@ class Qattention3DNetWithContext(Qattention3DNet):
             x = torch.cat([x, p], dim=1)
         
         if self._use_context and self._encode_context:
-             
+            if self._dev_cfgs.get('ctxt_conv3d', False):
+                context = self.ctxt_activate(
+                    self.ctxt_conv3d(context)
+                    )
+                context = rearrange(context, 'bk d n h w -> bk (d n h w)')
             ctxt = self._context_preprocess(context) # b, 64 
 
             if self._encode_context_hidden > 0:

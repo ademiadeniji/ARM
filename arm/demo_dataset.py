@@ -308,7 +308,11 @@ class RLBenchDemoDataset(Dataset):
             # take_steps = [0] + \
             #     list(np.random.choice(range(1, aval_steps-1), self._num_steps) ) + \
             #     [aval_steps-1]
-            take_steps = list(np.random.choice(range(aval_steps-1), self._num_steps-1) ) + \
+            if 'pick_and_lift' in path:
+                arrs = np.array_split(np.arange(aval_steps), self._num_steps)
+                take_steps = [int(np.random.choice(ls,1)) for ls in arrs] 
+            else:
+                take_steps = list(np.random.choice(range(aval_steps-1), self._num_steps-1) ) + \
                 [aval_steps-1]
         take_steps = sorted(take_steps)
         for name in [FRONT_RGB_FOLDER, FRONT_DEPTH_FOLDER]: #, FRONT_MASK_FOLDER]:
