@@ -307,10 +307,10 @@ class Qattention3DNetWithContext(Qattention3DNet):
                     in_channels=8192, out_channels=512, 
                     kernel_size=[3,1,1], 
                     stride=2)
-                nn.init.kaiming_uniform_(self.ctxt_conv3d.weight, a=LRELU_SLOPE,
+                    nn.init.kaiming_uniform_(self.ctxt_conv3d.weight, a=LRELU_SLOPE,
                                      nonlinearity='leaky_relu')
-                nn.init.zeros_(self.ctxt_conv3d.bias)
-                self.ctxt_activate = nn.LeakyReLU(negative_slope=LRELU_SLOPE)
+                    nn.init.zeros_(self.ctxt_conv3d.bias)
+                    self.ctxt_activate = nn.LeakyReLU(negative_slope=LRELU_SLOPE)
 
                 self._context_preprocess = DenseBlock(
                     self._inp_context_size, self._encode_context_size, None, self._activation)
