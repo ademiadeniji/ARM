@@ -157,8 +157,9 @@ def _add_keypoints_to_replay(
             final_obs['attention_coordinate_layer_%d' % depth] = \
                 attention_coordinates[depth]
         for name in cameras:
+            
             px, py = utils.point_to_pixel_index(
-                obs_tp1.gripper_pose[:3],
+                obs_tp1.gripper_pose[:3],  
                 obs_tp1.misc['%s_camera_extrinsics' % name],
                 obs_tp1.misc['%s_camera_intrinsics' % name])
             final_obs['%s_pixel_coord' % name] = [py, px]
@@ -200,6 +201,12 @@ def fill_replay(replay: ReplayBuffer,
         #     from_episode_number=d_idx)[0]
         lookup_cams = []
         for cam in cameras: # must be in [l, r, oh, wrist, front,]
+            if cam == 'left_shoulder':
+                cam = 'l'
+            if cam == 'right_shoulder':
+                cam = 'r'
+            if cam == 'overhead':
+                cam = 'oh'
             lookup_cams.extend([cam + '_rgb', cam + '_depth'])
         demo = env.custom_get_demos(
             task, 1, variation_number=variation, random_selection=False,
