@@ -117,7 +117,7 @@ def fill_replay(replay: ReplayBuffer,
                 demo_augmentation: bool,
                 demo_augmentation_every_n: int,
                 cameras: List[str]):
-    logging.info('Filling replay with demos...')
+    #logging.info('Filling replay with demos...')
     all_actions = []
     for d_idx in range(num_demos):
         demo = env.env.get_demos(
@@ -138,7 +138,7 @@ def fill_replay(replay: ReplayBuffer,
                 break
             all_actions.extend(_add_keypoints_to_replay(
                 replay, obs, demo, env, episode_keypoints, cameras))
-    logging.info('Replay filled with demos.')
+    #logging.info('Replay filled with demos.')
     return all_actions
 
 

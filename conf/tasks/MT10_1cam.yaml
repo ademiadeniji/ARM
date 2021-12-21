@@ -1,0 +1,7 @@
+# always uses 10 training tasks and 1 held-out task 
+all_tasks: [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,push_button,reach_target,lamp_on,take_lid_off_saucepan,stack_wine,open_door,take_usb_out_of_computer]
+cameras: [front]
+num_vars: -1 
+heldout: ???
+demo_length: 1
+# push_button, take_lid_off_saucepan, pick_and_lift, open_door, 

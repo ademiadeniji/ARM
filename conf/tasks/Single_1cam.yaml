@@ -1,0 +1,5 @@
+all_tasks: [pick_up_cup]
+cameras: [front]
+num_vars: -1 
+heldout: ''
+demo_length: 1

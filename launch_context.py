@@ -64,15 +64,20 @@ LATEST_MT = [
     'reach_target',
     'stack_wine', 
     'take_lid_off_saucepan',
-    'take_umbrella_out_of_umbrella_stand',
+    'take_umbrella_out_of_umbrella_stand', # hard 
     'lamp_on',
     'lamp_off',
-    'open_door',
-    'press_switch',
+    'open_door', # 80%+
+    'press_switch', # better w/ 2+ cameras 
     'push_button',
     'take_usb_out_of_computer',
-    'close_drawer',
+    'close_drawer', # 60% ish, not perfect. 3var
 ]
+# multi-tcam (left_shoulder + right_shoulder): meat_griff, put_procery, money, unplug_charger, 
+# put_groceries_in_cupboard: 9 vars
+# meat_off_grill and meat_on_grill: 2 vars
+# put_money_in_safe, take_money_out_safe: 3 each
+# unplug_charger: 1 var
 def make_loader(cfg, mode, dataset):
     """ Not used lately """
     variation_idxs, task_idxs = dataset.get_idxs()
@@ -165,7 +170,7 @@ def run_seed(
                         )
                     task_var_to_replay_idx[i][var] = len(replays)
                     replays.append(r)
-                print(f"Task id {i}: {one_task}, **created** and filled replay for {len(its_variations)} variations")
+                # print(f"Task id {i}: {one_task}, **created** and filled replay for {len(its_variations)} variations")
             print('Created mapping from var ids to buffer ids:', task_var_to_replay_idx)
             cfg.replay.total_batch_size = int(cfg.replay.batch_size * cfg.replay.buffers_per_batch)
               
@@ -182,7 +187,7 @@ def run_seed(
     # stat_accum = MultiTaskAccumulator(cfg.tasks, eval_video_fps=30) 
     logging.info('Creating Stat Accumulator: ')
     stat_accum = MultiTaskAccumulatorV2(
-        task_names=cfg.tasks, 
+        task_names=all_tasks, 
         tasks_vars=cfg.rlbench.use_variations,
         eval_video_fps=30,
         mean_only=True,
@@ -224,8 +229,14 @@ def run_seed(
 
     num_all_vars = sum([len(variations) for variations in cfg.rlbench.all_variations]) 
     # if mt_only, generator doesn't sample context
+
     rollout_generator = RolloutGeneratorWithContext(
-        train_demo_dataset, one_hot=cfg.dev.one_hot, noisy_one_hot=cfg.dev.noisy_one_hot, num_vars=num_all_vars)
+        train_demo_dataset, 
+        one_hot=cfg.dev.one_hot, 
+        noisy_one_hot=cfg.dev.noisy_one_hot, 
+        num_task_vars=num_all_vars,
+        task_var_to_replay_idx=task_var_to_replay_idx,
+        )
 
     device_list = [ i for i in range(torch.cuda.device_count()) ]
     assert len(device_list) > 1, 'Must use multiple GPUs'
@@ -294,6 +305,7 @@ def run_seed(
         noisy_one_hot=cfg.dev.noisy_one_hot,
         num_vars=num_all_vars,
         buffers_per_batch=cfg.replay.buffers_per_batch,
+        num_tasks_per_batch=cfg.replay.num_tasks_per_batch,
         update_buffer_prio=cfg.replay.update_buffer_prio,
         offline=cfg.dev.offline,
         eval_only=cfg.dev.eval_only,  
@@ -314,15 +326,13 @@ def run_seed(
 @hydra.main(config_name='config_metarl', config_path='conf')
 def main(cfg: DictConfig) -> None: 
     if cfg.framework.gpu is not None and torch.cuda.is_available():
-        device = torch.device("cuda:%d" % cfg.framework.gpu)
-       # torch.cuda.set_device(cfg.framework.gpu)
+        device = torch.device("cuda:%d" % cfg.framework.gpu) 
         torch.backends.cudnn.enabled = torch.backends.cudnn.benchmark = True
     else:
         device = torch.device("cpu")
     logging.info('Using device %s.' % str(device))
 
-    cfg.tasks = sorted(cfg.tasks)
-    tasks = cfg.tasks
+    tasks = sorted([t for t in cfg.tasks.all_tasks if t != cfg.tasks.heldout])
     task_classes = [task_file_to_task_class(t) for t in tasks]
 
     cfg.rlbench.cameras = cfg.rlbench.cameras if isinstance(
@@ -336,8 +346,6 @@ def main(cfg: DictConfig) -> None:
         print(cfg.dev.handpick)
         variation_idxs = cfg.dev.handpick
 
-    if len(tasks) > 1:   
-        logging.info('Running multi-task setting, for now, make sure all tasks have the same num of variations')
     logging.info(f'Creating Env with that samples only from below variations:')
     print(variation_idxs)
 
@@ -355,7 +363,10 @@ def main(cfg: DictConfig) -> None:
     use_variations = []
     for name, tsk in zip(tasks, task_classes):
         task = env.get_task(tsk) 
-        count = task.variation_count() 
+        count = task.variation_count()
+        if name == 'put_groceries_in_cupboard':
+            count = 6 
+            print('put_groceries_in_cupboard has bugged variation6, skipping 6-9 ') 
         use_count = cfg.rlbench.num_vars if cfg.rlbench.num_vars > -1 else count 
         all_tasks.append(name)
         var_count += count
@@ -386,10 +397,12 @@ def main(cfg: DictConfig) -> None:
     cfg.rlbench.use_variations = use_variations
     all_task_ids = [ i for i in range(len(all_tasks)) ]
 
-    tasks_name = "-".join(cfg.tasks) + f"-{var_count}var"
-    if len(cfg.tasks) > 2:
-        tasks_name = f'{len(cfg.tasks)}Task-{use_vars_count}var' 
-        logging.info(f'Got {len(cfg.tasks)} tasks, re-naming the run as: {tasks_name}')
+    tasks_name = "-".join(tasks) + f"-{var_count}var"
+    if len(tasks) > 2:
+        tasks_name = f'{len(tasks)}Task-{use_vars_count}var' 
+        if len(cfg.tasks.heldout) > 1:
+            tasks_name += f'-Heldout-{cfg.tasks.heldout}'
+        logging.info(f'Got {len(tasks)} tasks, re-naming the run as: {tasks_name}')
     cfg.tasks_name = tasks_name
      
     if not cfg.mt_only and cfg.rlbench.num_vars == -1 :
@@ -405,11 +418,9 @@ def main(cfg: DictConfig) -> None:
     cwd = os.getcwd()
 
     cfg.run_name = cfg.run_name + f"-Replay_B{cfg.replay.batch_size}x{1 if cfg.replay.share_across_tasks else cfg.replay.buffers_per_batch}"
-    if not (cfg.dev.one_hot or cfg.dev.noisy_one_hot):
-        cfg.run_name += f"-Q{cfg.contexts.agent.query_ratio}"
     if cfg.mt_only or cfg.dev.one_hot or cfg.dev.noisy_one_hot:
         logging.info('Use MT-policy or One-hot context, no context embedding, setting EnvRunner visible GPUs to 1')
-        cfg.run_name += '-NoContext' 
+        # cfg.run_name += '-NoContext' 
         cfg.framework.env_runner_gpu = 1 
     elif cfg.contexts.update_freq > cfg.framework.training_iterations:
         logging.info('Warning! Not updating context agent with context batch, hinge loss calculated from replay batch only.')
