@@ -4,4 +4,7 @@ cameras: [front]
 num_vars: -1 
 heldout: ???
 demo_length: 1
+train_steps: 100000 
+log_freq:   500 
 # push_button, take_lid_off_saucepan, pick_and_lift, open_door, 
+

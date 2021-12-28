@@ -34,14 +34,14 @@ replay:
     use_disk: False
     path: '/tmp/arm_sanity/replay'  # Only used when use_disk is True.
     share_across_tasks: False  
-    replay_size: 100000 # total size 
+    replay_size: 1000000 # total size 
     update_buffer_prio: True 
     buffers_per_batch: 6
     num_tasks_per_batch: -1
     # ? make sure the multi-var tasks get multiple vars
 
 framework:
-    log_freq:  100 # set to bigger to not save so many media files 
+    log_freq:  ${tasks.log_freq} # set to bigger to not save so many media files 
     save_freq: 100
     train_envs: 1
     eval_envs: 1
@@ -51,7 +51,7 @@ framework:
     tensorboard_logging: True
     csv_logging: False
     wandb: True
-    training_iterations: 10000
+    training_iterations: ${tasks.train_steps}
     eval_episodes: 2000
     gpu: 0
     logdir: '/home/mandi/ARM/log/'
@@ -161,8 +161,6 @@ cdev:
   pass_3d: ${dev.ctxt_conv3d}
 
 
-
-
 dataset:
   image_size:                 [128, 128]
   root_dir:                   ${rlbench.demo_path}
@@ -170,7 +168,7 @@ dataset:
   num_episodes_per_variation: 20 # up to 20
   num_steps_per_episode:      ${tasks.demo_length} # 1, 2 for now  
   exclude_tasks:              []
-  include_tasks:              ${tasks} # OR: set to [] or other options so it loads in more tasks than the trained one
+  include_tasks:              ??? # OR: set to [] or other options so it loads in more tasks than the trained one
   data_augs:   
     grayscale:        0
     strong_jitter:    0 

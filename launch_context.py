@@ -424,6 +424,8 @@ def main(cfg: DictConfig) -> None:
         cfg.framework.env_runner_gpu = 1 
     elif cfg.contexts.update_freq > cfg.framework.training_iterations:
         logging.info('Warning! Not updating context agent with context batch, hinge loss calculated from replay batch only.')
+    elif cfg.dev.discrete:
+        cfg.run_name += f"-Hidden{cfg.dev.encode_context_hidden}-Encode{cfg.dev.qnet_context_latent_size}"
     else:
         cfg.run_name +=  f"-Ctxt_B{cfg.contexts.sampler.batch_dim}_freq{cfg.contexts.update_freq}_" + \
                         f"iter{cfg.contexts.num_update_itrs}_embed{cfg.contexts.agent.embedding_size*4}" 
@@ -440,6 +442,7 @@ def main(cfg: DictConfig) -> None:
     else:
         # make demo dataset and align idxs with task id in the environment 
         logging.info('Making dataset for context embedding update')
+        cfg.dataset.include_tasks = all_tasks
         train_demo_dataset = RLBenchDemoDataset(obs_config=obs_config, mode='train', **cfg.dataset)
         val_demo_dataset = RLBenchDemoDataset(obs_config=obs_config, mode='val', **cfg.dataset)
         

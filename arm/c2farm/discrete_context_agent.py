@@ -96,7 +96,7 @@ class DiscreteContextAgent(Agent):
             device = torch.device('cpu') 
         
         if 'dvae' in self._loss_mode:
-            self._embedding_net = load_model("/home/mandi/ARM/encoder.pkl", device)
+            self._embedding_net = load_model("/shared/mandi/encoder.pkl", device)
             if self._dev_cfg.get('use_conv', False):
                 self.conv3d = nn.Conv3d(
                     in_channels=8192, out_channels=self._dev_cfg.conv_out, 
