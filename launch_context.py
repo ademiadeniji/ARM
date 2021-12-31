@@ -43,8 +43,7 @@ import wandb
 
 from yarr.utils.multitask_rollout_generator import RolloutGeneratorWithContext
 from launch_multitask import _create_obs_config, _modify_action_min_max
- 
-from arm.models.slowfast  import TempResNet
+  
 from arm.demo_dataset import MultiTaskDemoSampler, RLBenchDemoDataset, collate_by_id, PyTorchIterableDemoDataset
 from arm.models.utils import make_optimizer 
 from functools import partial
@@ -262,6 +261,8 @@ def run_seed(
         share_buffer_across_tasks=cfg.replay.share_across_tasks, 
         task_var_to_replay_idx=task_var_to_replay_idx,
         eval_only=cfg.dev.eval_only, # only run eval EnvRunners 
+        iter_eval=cfg.framework.ckpt_eval, # 
+        eval_episodes=cfg.framework.num_log_episodes, 
         )  
 
     if cfg.framework.wandb:

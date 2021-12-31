@@ -17,7 +17,7 @@ rotation_resolution: 5
 
 # Voxel
 image_crop_size: 64
-bounds_offset: [0.15]
+bounds_offset: [0.15] # width,height,depth for voxel_size [0.15,0.05/0.1]
 voxel_sizes: [16, 16]
 
 crop_augmentation: True

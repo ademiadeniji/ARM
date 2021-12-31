@@ -102,8 +102,8 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
             self._record_cam.set_pose(cam_placeholder.get_pose())
             self._record_cam.set_render_mode(RenderMode.OPENGL)
 
-    def reset(self) -> dict:
-        self._previous_obs_dict = super(CustomMultiTaskRLBenchEnv, self).reset()
+    def reset(self, swap_task=True) -> dict:
+        self._previous_obs_dict = super(CustomMultiTaskRLBenchEnv, self).reset(swap_task)
         self._record_current_episode = self.eval
         # self._record_current_episode = (
         #         self.eval and self._episode_index % RECORD_EVERY == 0)

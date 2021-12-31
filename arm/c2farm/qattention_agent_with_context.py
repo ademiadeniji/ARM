@@ -53,7 +53,8 @@ class QFunction(nn.Module):
         d_ = max_val_hw.argmax(1)
         m = argmax_hw.gather(1, d_.unsqueeze(-1).repeat(1, d))[:, 0].unsqueeze(
             -1)
-        indices = torch.cat((d_.unsqueeze(-1), (m // h) % w, m % w), dim=1)
+        # indices = torch.cat((d_.unsqueeze(-1), (m // h) % w, m % w), dim=1)
+        indices = torch.cat((d_.unsqueeze(-1), torch.div(m, h, rounding_mode='trunc') % w, m % w), dim=1)
         return indices
 
     def choose_highest_action(self, q_trans, q_rot_grip):

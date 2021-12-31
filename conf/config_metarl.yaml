@@ -63,7 +63,8 @@ framework:
     resume_dir: ''
     log_all_vars: False
     switch_online_tasks: 0
-    num_log_episodes: 5 
+    num_log_episodes: 5  # NOTE: also use this to count ckpt eval episodes!!
+    ckpt_eval: False 
 
 
 resume: False
@@ -168,7 +169,7 @@ dataset:
   num_episodes_per_variation: 20 # up to 20
   num_steps_per_episode:      ${tasks.demo_length} # 1, 2 for now  
   exclude_tasks:              []
-  include_tasks:              ??? # OR: set to [] or other options so it loads in more tasks than the trained one
+  include_tasks:              [] # set to [] or other options so it loads in more tasks than the trained one
   data_augs:   
     grayscale:        0
     strong_jitter:    0 

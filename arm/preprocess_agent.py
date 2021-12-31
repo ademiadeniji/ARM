@@ -15,6 +15,7 @@ class PreprocessAgent(Agent):
                  context_agent: Agent = None):
         self._pose_agent = pose_agent
         self._context_agent = context_agent 
+        self._checkpoint = -1 
 
     def build(self, training: bool, device: torch.device = None, context_device: torch.device = None):
         # NOTE build context agent first to get its optim paramters
@@ -145,7 +146,10 @@ class PreprocessAgent(Agent):
         self._pose_agent.load_weights(savedir)
         if self._context_agent is not None:
             self._context_agent.load_weights(savedir)
+        self._checkpoint = int(savedir.split('/')[-1])
 
+    def get_checkpoint(self):
+        return self._checkpoint
 
     def save_weights(self, savedir: str):
         self._pose_agent.save_weights(savedir)

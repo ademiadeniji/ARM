@@ -31,6 +31,7 @@ from torch.utils.data import DataLoader
 REWARD_SCALE = 100.0
 TASK_ID='task_id'
 VAR_ID='variation_id'
+CHECKPT='agent_checkpoint'
 CONTEXT_SIZE=64
 
 
@@ -59,9 +60,9 @@ def create_replay(batch_size: int, timesteps: int, prioritisation: bool,
 
     extra_replay_elements = [
         ReplayElement('demo', (), np.bool),
-        ReplayElement('task_id', (), np.uint8),
-        #ReplayElement('task_name', (), str),
-        ReplayElement('variation_id', (), np.uint8),
+        ReplayElement(TASK_ID, (), np.uint8),
+        ReplayElement(VAR_ID, (), np.uint8),
+        ReplayElement(CHECKPT, (), np.uint8),
     ]
 
     replay_class = UniformReplayBuffer
@@ -147,7 +148,7 @@ def _add_keypoints_to_replay(
         obs_dict = env.extract_obs(obs, t=k, prev_action=prev_action)
         prev_action = np.copy(action)
 
-        others = {'demo': True, TASK_ID: task_id , VAR_ID: variation}
+        others = {'demo': True, TASK_ID: task_id , VAR_ID: variation, CHECKPT: -1}
         final_obs = {
             'trans_action_indicies': trans_indicies,
             'rot_grip_action_indicies': rot_grip_indicies,
@@ -374,6 +375,7 @@ def create_agent_with_context(cfg: DictConfig, env,
         if cfg.dev.discrete and cfg.contexts.loss_mode == 'gumbel' and cfg.contexts.discrete_agent.latent_dim == 3:
             ctxt_size = 16 * 2048
 
+    logging.info('Setting context input size to {}'.format(ctxt_size))
     for depth, vox_size in enumerate(cfg.method.voxel_sizes):
         if depth == 0:
             if cfg.dev.use_film:

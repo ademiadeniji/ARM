@@ -64,3 +64,33 @@ dataset.defer_transforms=True dev.discrete=True contexts.loss_mode='dvae' \
 dev.qnet_context_latent_size=${DIM} framework.training_iterations=20000 \
 contexts.sampler.k_dim=1  dev.single_layer_context=True dev.encode_context_hidden=${HID} \
 dataset.num_steps_per_episode=3 cdev.use_conv=True cdev.conv_out=${OUT} cdev.conv_kernel=[3,2,2]
+
+
+DIM=16
+HID=1024
+OUT=512
+RUN=10Var-3frameConv3d-dVAE-QEncode${DIM}-Hidden${HID}-Ker311-Feat${OUT}-Stride2
+taskset -c $CPUS  python launch_context.py rlbench.num_vars=10 run_name=$RUN   \
+dataset.defer_transforms=True dev.discrete=True contexts.loss_mode='dvae' \
+dev.qnet_context_latent_size=${DIM} framework.training_iterations=20000 \
+contexts.sampler.k_dim=1  dev.single_layer_context=True dev.encode_context_hidden=${HID} \
+dataset.num_steps_per_episode=3 cdev.use_conv=True cdev.conv_out=${OUT} cdev.stride=2
+
+DIM=16
+HID=1024 
+RUN=10Var-1frame-dVAE-QEncode${DIM}-Hidden${HID} 
+taskset -c $CPUS  python launch_context.py rlbench.num_vars=10 run_name=$RUN tasks=['pick_and_lift']   \
+dataset.defer_transforms=True dev.discrete=True contexts.loss_mode='dvae' \
+dev.qnet_context_latent_size=${DIM} framework.training_iterations=50000 \
+contexts.sampler.k_dim=1  dev.single_layer_context=True dev.encode_context_hidden=${HID} \
+dataset.num_steps_per_episode=1 
+
+DIM=16
+HID=1024
+OUT=4096
+RUN=10Var-3frameConv3d-dVAE-QEncode${DIM}-Hidden${HID}-Ker322-Feat${OUT}-Stride3
+taskset -c $CPUS  python launch_context.py rlbench.num_vars=10 run_name=$RUN tasks=['pick_and_lift'] \
+dataset.defer_transforms=True dev.discrete=True contexts.loss_mode='dvae' \
+dev.qnet_context_latent_size=${DIM} framework.training_iterations=20000 \
+contexts.sampler.k_dim=1  dev.single_layer_context=True dev.encode_context_hidden=${HID} \
+dataset.num_steps_per_episode=3 cdev.use_conv=True cdev.conv_out=${OUT} cdev.stride=3 cdev.conv_kernel=[3,2,2]

@@ -3,11 +3,13 @@ Install on RLL servers:
 New: for Slow resnets
 - [fvcore](https://github.com/facebookresearch/fvcore/): `pip install 'git+https://github.com/facebookresearch/fvcore'`
 
-- `pip install einops MulticoreTSNE pandas bokeh fvcore matplotlib`
+- `pip install wandb hydra pyrender einops MulticoreTSNE pandas bokeh fvcore matplotlib`
 - `conda install jupyter`
 
 
 ```
+ssh -T git@github.com
+
 conda create -n arm python=3.7 pytorch==1.8.1
 conda activate arm 
 # If starting from scratch: 
@@ -19,6 +21,7 @@ tar -xvf CoppeliaSim_Edu_V4_1_0_Ubuntu18_04.tar.xz
 export COPPELIASIM_ROOT=/home/mandi/CoppeliaSim_Edu_V4_1_0_Ubuntu18_04
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$COPPELIASIM_ROOT
 export QT_QPA_PLATFORM_PLUGIN_PATH=$COPPELIASIM_ROOT
+
 source .bashrc
 conda activate arm
 
