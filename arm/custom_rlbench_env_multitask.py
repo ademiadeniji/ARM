@@ -104,7 +104,7 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
 
     def reset(self, swap_task=True) -> dict:
         self._previous_obs_dict = super(CustomMultiTaskRLBenchEnv, self).reset(swap_task)
-        self._record_current_episode = self.eval
+        self._record_current_episode = False # NOTE(1231) this is bugged after adding pyrep.stop() self.eval
         # self._record_current_episode = (
         #         self.eval and self._episode_index % RECORD_EVERY == 0)
         self._episode_index += 1
@@ -116,10 +116,10 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
         self._task._scene.register_step_callback(func)
 
     def _my_callback(self):
-        if self._record_current_episode:
-            self._record_cam.handle_explicitly()
+        if self._record_current_episode: 
+            self._record_cam.handle_explicitly() # doesn't throw bug if commented out
             cap = (self._record_cam.capture_rgb() * 255).astype(np.uint8)
-            self._recorded_images.append(cap)
+            self._recorded_images.append(cap) 
 
     def _append_final_frame(self, success: bool):
         self._record_cam.handle_explicitly()
@@ -130,8 +130,8 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
         final_frames[:, :, :, 1 if success else 0] = 255
         self._recorded_images.extend(list(final_frames))
 
-    def step(self, act_result: ActResult) -> Transition:
-        action = act_result.action
+    def step(self, act_result: ActResult) -> Transition: 
+        action = act_result.action  
         assert not np.any(np.isnan(action)), f'Got NaN in action results:{list(action)}'
         success = False
         obs = self._previous_obs_dict  # in case action fails.
