@@ -92,23 +92,26 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
     def launch(self):
         super(CustomMultiTaskRLBenchEnv, self).launch()
         self._task._scene.register_step_callback(self._my_callback)
+        # print('grabbing record cam at launch ')
+        # self._record_cam = VisionSensor('record_cam')
         if self.eval:
             self._record_current_episode = True 
-            cam_placeholder = Dummy('cam_cinematic_placeholder')
-            cam_base = Dummy('cam_cinematic_base')
-            cam_base.rotate([0, 0, np.pi * 0.75])
-            self._record_cam = VisionSensor.create([120, 90])
-            self._record_cam.set_explicit_handling(True)
-            self._record_cam.set_pose(cam_placeholder.get_pose())
-            self._record_cam.set_render_mode(RenderMode.OPENGL)
+            # cam_placeholder = Dummy('cam_cinematic_placeholder')
+            # cam_base = Dummy('cam_cinematic_base')
+            # cam_base.rotate([0, 0, np.pi * 0.75])
+            # self._record_cam = VisionSensor.create([120, 90])
+            # self._record_cam.set_explicit_handling(True)
+            # self._record_cam.set_pose(cam_placeholder.get_pose())
+            # self._record_cam.set_render_mode(RenderMode.OPENGL)
 
     def reset(self, swap_task=True) -> dict:
         self._previous_obs_dict = super(CustomMultiTaskRLBenchEnv, self).reset(swap_task)
-        self._record_current_episode = False # NOTE(1231) this is bugged after adding pyrep.stop() self.eval
+        self._record_current_episode =  False # NOTE(1231) this is bugged after adding pyrep.stop() self.eval
         # self._record_current_episode = (
         #         self.eval and self._episode_index % RECORD_EVERY == 0)
         self._episode_index += 1
         self._recorded_images.clear()
+         
         self._i = 0 
         return self._previous_obs_dict
 

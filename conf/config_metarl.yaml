@@ -105,6 +105,7 @@ dev:
     discrete: False  # dVAE context agent
     discretise: False # for gumbel smax
     ctxt_conv3d: False 
+    batch_sample_mode: ''
 
 contexts:
   num_update_itrs: 5
@@ -167,7 +168,7 @@ dataset:
   root_dir:                   ${rlbench.demo_path}
   num_variations_per_task:    -1 # just loads all vars
   num_episodes_per_variation: 20 # up to 20
-  num_steps_per_episode:      ${tasks.demo_length} # 1, 2 for now  
+  num_steps_per_episode:      ${tasks.demo_length}  
   exclude_tasks:              []
   include_tasks:              [] # set to [] or other options so it loads in more tasks than the trained one
   data_augs:   

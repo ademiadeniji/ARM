@@ -106,7 +106,6 @@ def run_seed(
     train_demo_dataset,
     val_demo_dataset,
     ) -> None:
-    replay_ratio = cfg.framework.get("replay_ratio", None)
     replay_path = join(cfg.replay.path, cfg.tasks_name, cfg.method.name, 'seed%d' % seed)
     action_min_max = None
     task_var_to_replay_idx = defaultdict(dict)
@@ -262,7 +261,9 @@ def run_seed(
         task_var_to_replay_idx=task_var_to_replay_idx,
         eval_only=cfg.dev.eval_only, # only run eval EnvRunners 
         iter_eval=cfg.framework.ckpt_eval, # 
-        eval_episodes=cfg.framework.num_log_episodes, 
+        eval_episodes=cfg.framework.num_log_episodes,
+        log_freq=cfg.framework.log_freq, 
+        target_replay_ratio=cfg.framework.replay_ratio,
         )  
 
     if cfg.framework.wandb:
@@ -292,7 +293,7 @@ def run_seed(
         log_freq=cfg.framework.log_freq, 
         logdir=logdir,
         weightsdir=weightsdir,
-        replay_ratio=replay_ratio,
+        replay_ratio=cfg.framework.replay_ratio,
         transitions_before_train=cfg.framework.transitions_before_train,
         tensorboard_logging=cfg.framework.tensorboard_logging,
         csv_logging=cfg.framework.csv_logging,
@@ -326,6 +327,9 @@ def run_seed(
 
 @hydra.main(config_name='config_metarl', config_path='conf')
 def main(cfg: DictConfig) -> None: 
+
+    
+
     if cfg.framework.gpu is not None and torch.cuda.is_available():
         device = torch.device("cuda:%d" % cfg.framework.gpu) 
         torch.backends.cudnn.enabled = torch.backends.cudnn.benchmark = True
@@ -468,6 +472,7 @@ def main(cfg: DictConfig) -> None:
             train_demo_dataset,
             val_demo_dataset,
             )
+
 
 
 if __name__ == '__main__':
