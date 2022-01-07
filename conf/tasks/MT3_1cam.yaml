@@ -1,0 +1,7 @@
+all_tasks: [pick_up_cup,stack_wine,phone_on_base]
+cameras: [front]
+num_vars: -1 
+heldout: ''
+demo_length: 1 
+train_steps: 10000
+log_freq:   100 
