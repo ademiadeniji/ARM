@@ -264,6 +264,7 @@ def run_seed(
         eval_episodes=cfg.framework.num_log_episodes,
         log_freq=cfg.framework.log_freq, 
         target_replay_ratio=cfg.framework.replay_ratio,
+        final_checkpoint_step=int(cfg.framework.training_iterations-1)
         )  
 
     if cfg.framework.wandb:
