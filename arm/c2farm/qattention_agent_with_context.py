@@ -138,6 +138,7 @@ class QAttentionContextAgent(Agent):
                  use_emb_loss: bool = True, 
                  emb_weight: float = 1.0,
                  one_hot: bool = False,
+                 reptile_eps: List[float] = [1, 0],
                  ):
         self._layer = layer
         self._lambda_trans_qreg = lambda_trans_qreg
@@ -173,7 +174,9 @@ class QAttentionContextAgent(Agent):
         self._use_emb_loss = use_emb_loss
         self._emb_weight = emb_weight 
         self._one_hot = one_hot 
-        
+        self._q_reptile = None 
+        self._reptile_eps = [float(eps) for eps in reptile_eps]
+
     def build(self, training: bool, device: torch.device = None):
         if device is None:
             device = torch.device('cpu')
@@ -615,3 +618,17 @@ class QAttentionContextAgent(Agent):
     def save_weights(self, savedir: str):
         torch.save(
             self._q.state_dict(), os.path.join(savedir, '%s.pt' % self._name))
+
+    def reptile_save_weights(self):
+        # saves a copy of the weights before updating k_steps 
+        self._q_reptile = copy.deepcopy(self._q)
+        [p.requires_grad_(False) for p in self._q_reptile.parameters()]
+    
+    def reptile_soft_update(self, frac_done: float = 0.0):
+        assert self._q_reptile is not None, 'Missing the saved weights before k update steps'
+        eps = frac_done * self._reptile_eps[1] + (1 - frac_done) * self._reptile_eps[0]
+
+        for new_param, old_param in zip(self._q_reptile.parameters(), self._q.parameters()):
+            old_param.data.copy_(
+                old_param.data + eps * (new_param.data - old_param.data))
+        return

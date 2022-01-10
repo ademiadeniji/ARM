@@ -106,6 +106,9 @@ dev:
     discretise: False # for gumbel smax
     ctxt_conv3d: False 
     batch_sample_mode: ''
+    use_reptile: False 
+    reptile_eps: [1,0] # [initial, final]
+    reptile_k: 5 
 
 contexts:
   num_update_itrs: 5

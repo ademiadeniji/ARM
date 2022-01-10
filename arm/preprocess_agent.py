@@ -41,15 +41,27 @@ class PreprocessAgent(Agent):
         # replay_sample = {k: v[:, 0] for k, v in replay_sample.items()}
         for k, v in replay_sample.items():
             if 'rgb' in k:
-                replay_sample[k] = self._norm_rgb_(v)
-        # self._replay_sample = replay_sample
-        self._replay_sample = {k: rearrange(v, 'n k ... -> (n k) ...') for k, v in replay_sample.items()} # the stack agent does another reshape, here is just for logging purpose 
-        for k, v in replay_sample.items():
+                replay_sample[k] = self._norm_rgb_(v) 
             if isinstance(v, torch.Tensor):
                 replay_sample[k] = v.to(self._device) 
+        self._replay_sample = {k: rearrange(v, 'n k ... -> (n k) ...') for k, v in replay_sample.items()} # the stack agent does another reshape, here is just for logging purpose 
         pose_dict = self._pose_agent.update(step, replay_sample)
          
         return pose_dict
+    
+    def update_reptile_inner(self, step: int, replay_sample: dict, k_step: int) -> dict:
+        # Samples are still shape (N, K, ...), BUT iterate over N dimension before taking parameter average
+        for k, v in replay_sample.items():
+            if 'rgb' in k:
+                replay_sample[k] = self._norm_rgb_(v)
+            if isinstance(replay_sample[k], torch.Tensor):
+                replay_sample[k] = replay_sample[k].to(self._device)
+        self._replay_sample = {k: rearrange(v, 'n k ... -> (n k) ...') for k, v in replay_sample.items()} # the stack agent does another reshape, here is just for logging purpose 
+        
+        return self._pose_agent.update_reptile(step, replay_sample, k_step)
+
+    def update_reptile_outer(self, frac_done: float):
+        return self._pose_agent.update_reptile_outer(frac_done)
 
     def update_context_via_qagent(self, step: int, replay_sample: dict, classify: bool, emb_weight: float):
         for k, v in replay_sample.items():

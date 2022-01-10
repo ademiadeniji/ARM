@@ -3,7 +3,7 @@ Install on RLL servers:
 New: for Slow resnets
 - [fvcore](https://github.com/facebookresearch/fvcore/): `pip install 'git+https://github.com/facebookresearch/fvcore'`
 
-- `pip install wandb hydra pyrender einops MulticoreTSNE pandas bokeh fvcore matplotlib`
+- `pip install dall-e wandb hydra pyrender einops MulticoreTSNE pandas bokeh fvcore matplotlib`
 - `conda install jupyter`
 
 

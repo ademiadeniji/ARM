@@ -477,6 +477,7 @@ def create_agent_with_context(cfg: DictConfig, env,
             use_emb_loss=cfg.dev.qagent_use_emb_loss, 
             emb_weight=cfg.contexts.emb_weight,
             one_hot=(cfg.dev.one_hot or cfg.dev.noisy_one_hot),
+            reptile_eps=cfg.dev.reptile_eps,
         )
         qattention_agents.append(qattention_agent)
 
