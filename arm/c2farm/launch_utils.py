@@ -268,7 +268,10 @@ def create_agent(cfg: DictConfig, env, depth_0bounds=None, cam_resolution=None):
                 activation=cfg.method.activation,
                 low_dim_size=env.low_dim_state_len,
                 include_prev_layer=include_prev_layer)
-
+        layer_lr = cfg.method.lr
+        if cfg.resume and depth in list(cfg.resume_freeze):
+            layer_lr = 0 
+            logging.info('Not fine-tuning layer {}! Setting lr to 0'.format(depth))
         qattention_agent = QAttentionAgent(
             layer=depth,
             coordinate_bounds=depth_0bounds,
@@ -278,7 +281,7 @@ def create_agent(cfg: DictConfig, env, depth_0bounds=None, cam_resolution=None):
             bounds_offset=cfg.method.bounds_offset[depth - 1] if depth > 0 else None,
             image_crop_size=cfg.method.image_crop_size,
             tau=cfg.method.tau,
-            lr=cfg.method.lr,
+            lr=layer_lr,
             lambda_trans_qreg=cfg.method.lambda_trans_qreg,
             lambda_rot_qreg=cfg.method.lambda_rot_qreg,
             include_low_dim_state=True,
@@ -447,7 +450,10 @@ def create_agent_with_context(cfg: DictConfig, env,
                     encode_context_hidden=cfg.dev.encode_context_hidden,
                     dev_cfgs=dict(cfg.dev),
                     )
-
+        layer_lr = cfg.method.lr
+        if cfg.resume and depth in list(cfg.resume_freeze):
+            layer_lr = 0 
+            logging.info('Not fine-tuning layer {}! Setting lr to 0'.format(depth))
         qattention_agent = QAttentionContextAgent(
             layer=depth,
             coordinate_bounds=depth_0bounds,
@@ -457,7 +463,7 @@ def create_agent_with_context(cfg: DictConfig, env,
             bounds_offset=cfg.method.bounds_offset[depth - 1] if depth > 0 else None,
             image_crop_size=cfg.method.image_crop_size,
             tau=cfg.method.tau,
-            lr=cfg.method.lr,
+            lr=layer_lr,
             emb_lr=cfg.method.emb_lr,
             lambda_trans_qreg=cfg.method.lambda_trans_qreg,
             lambda_rot_qreg=cfg.method.lambda_rot_qreg,

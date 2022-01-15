@@ -411,7 +411,7 @@ def main(cfg: DictConfig) -> None:
         logging.info(f'Got {len(tasks)} tasks, re-naming the run as: {tasks_name}')
     cfg.tasks_name = tasks_name
      
-    if not cfg.mt_only and cfg.rlbench.num_vars == -1 :
+    if not cfg.mt_only and cfg.rlbench.num_vars == -1 and not cfg.dev.one_hot:
         # sanity check context dataset sampler
         if cfg.contexts.sampler.sample_mode == 'variation':
             assert cfg.contexts.sampler.batch_dim <= sum([len(l) for l in all_variations]) , \

@@ -38,6 +38,7 @@ replay:
     update_buffer_prio: True 
     buffers_per_batch: 6
     num_tasks_per_batch: -1
+    num_vars_per_batch: -1 
     # ? make sure the multi-var tasks get multiple vars
 
 framework:
@@ -61,6 +62,7 @@ framework:
     resume_run: ${resume_run}
     resume_step:  ${resume_step}
     resume_dir: ''
+    resume_freeze: ${resume_freeze}
     log_all_vars: False
     switch_online_tasks: 0
     num_log_episodes: 10  # NOTE: also use this to count ckpt eval episodes!!
@@ -68,9 +70,10 @@ framework:
 
 
 resume: False
-resume_path: '/home/mandi/ARM/log/'
+resume_path: '/home/mandi/ARM/log/' # or: /shared/mandi/arm_log 
 resume_run: ''
 resume_step: 24300
+resume_freeze: []
 
 dev:
     q_thres: 0.75  
@@ -109,6 +112,7 @@ dev:
     use_reptile: False 
     reptile_eps: [1,0] # [initial, final]
     reptile_k: 5 
+    normalize_reward: ''  
 
 contexts:
   num_update_itrs: 5
