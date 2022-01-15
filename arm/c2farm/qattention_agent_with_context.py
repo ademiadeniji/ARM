@@ -28,6 +28,7 @@ NAME = 'QAttention'
 REPLAY_BETA = 1.0
 ONE_HOT_KEY='var_one_hot'
 VAR_ID='variation_id'
+BUF_ID='buffer_id'
 
  
 class QFunction(nn.Module):
@@ -425,9 +426,11 @@ class QAttentionContextAgent(Agent):
 
         loss_weights = utils.loss_weights(replay_sample, REPLAY_BETA)
         combined_delta = q_delta.mean(1)
-        total_loss = combined_delta + qreg_loss 
-        
-        total_loss = (total_loss * loss_weights).mean()  
+        total_loss = combined_delta + qreg_loss
+        # print('loss shape', total_loss.shape, qreg_loss.shape)
+         
+        total_loss = (total_loss * loss_weights).sum() 
+       
         if self._layer == 0 and self._use_emb_loss and not self._one_hot: # otherwise, Replay batch still updates context embedder, BUT not using hinge loss 
             total_loss += (emb_loss).mean() * self._emb_weight 
         # DEBUG
@@ -476,23 +479,32 @@ class QAttentionContextAgent(Agent):
         prev_priority = replay_sample.get('priority', 0)
         
         # print('QAttentionAgent: priority shape', priority.shape )
-        task_ids, variation_ids = replay_sample[TASK_ID], replay_sample[VAR_ID]
+        task_ids, variation_ids = replay_sample[TASK_ID], replay_sample[BUF_ID]
         task_masks = [ (task_ids == j) for j in task_ids  ]
         task_prio = torch.stack(
             [torch.mean(torch.masked_select(priority, msk)) for msk in task_masks])
-        task_prio += replay_sample.get('task_prio', 0)
 
+        
         var_masks = [ (variation_ids == j) for j in variation_ids ]
         var_prio = torch.stack(
             [torch.mean(torch.masked_select(priority, msk)) for msk in var_masks])
-        var_prio += replay_sample.get('var_prio', 0)
-        # print('QAttentionAgent: task, var priors', task_prio, var_prio )
-
-        # print('\n done updating layer:', self._layer)
+ 
+        for i in replay_sample[BUF_ID]:
+            msk = variation_ids == i
+            var_err = torch.mean(torch.masked_select(combined_delta + qreg_loss, msk)) 
+            self._summaries.update({f'var_error/buffer_{i}': var_err})
+        for j in task_ids:
+            msk = task_ids == j 
+            task_err = torch.mean(torch.masked_select(combined_delta + qreg_loss, msk))
+       
+            self._summaries.update(
+                {f'task_error/task_{j}': task_err})
+         
+         
         return {
             'priority': priority + prev_priority,
-            'task_prio': task_prio,
-            'var_prio': var_prio,
+            'task_prio': task_prio + replay_sample.get('task_prio', 0),
+            'var_prio': var_prio + replay_sample.get('var_prio', 0),
             'prev_layer_voxel_grid': voxel_grid,
             'prev_layer_voxel_grid_tp1': voxel_grid_tp1,
             'prev_layer_encoded_context': encoded_context if self._pass_down_context and encoded_context is not None else context,

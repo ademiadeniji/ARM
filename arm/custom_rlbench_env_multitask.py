@@ -47,7 +47,7 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
                  swap_task_every: int = 1,
                  reward_scale: int = 100,
                  num_video_limit: int = 3, # don't log too many videos of the same reward
-                 use_variations: bool = False,
+                 use_variations: list = [],
                  ):
         super(CustomMultiTaskRLBenchEnv, self).__init__(
             task_classes, task_names, 

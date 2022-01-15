@@ -359,7 +359,7 @@ def create_agent_with_context(cfg: DictConfig, env,
     num_rotation_classes = int(360. // cfg.method.rotation_resolution)
     qattention_agents = []
     if cfg.dev.one_hot:
-        ctxt_size = sum([len(variations) for variations in cfg.rlbench.all_variations]) 
+        ctxt_size = sum([len(variations) for variations in cfg.rlbench.use_variations]) 
     elif cfg.dev.noisy_one_hot:
         ctxt_size = sum([len(variations) for variations in cfg.rlbench.use_variations]) 
     elif cfg.dev.noisy_dim_20:

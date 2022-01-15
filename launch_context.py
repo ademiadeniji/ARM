@@ -225,7 +225,7 @@ def run_seed(
         logging.info('\n Starting no-context TrainRunner')
 
 
-    num_all_vars = sum([len(variations) for variations in cfg.rlbench.all_variations]) 
+    num_all_vars = sum([len(variations) for variations in cfg.rlbench.use_variations]) 
     # if mt_only, generator doesn't sample context
 
     rollout_generator = RolloutGeneratorWithContext(
@@ -373,7 +373,7 @@ def main(cfg: DictConfig) -> None:
         if name == 'put_groceries_in_cupboard':
             count = 6 
             print('put_groceries_in_cupboard has bugged variation6, skipping 6-9 ') 
-        use_count = cfg.rlbench.num_vars if cfg.rlbench.num_vars > -1 else count 
+        use_count = min(count, cfg.rlbench.num_vars) if cfg.rlbench.num_vars > -1 else count 
         all_tasks.append(name)
         var_count += count
         use_vars_count += use_count 
