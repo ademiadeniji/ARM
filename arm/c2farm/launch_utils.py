@@ -295,6 +295,7 @@ def create_agent(cfg: DictConfig, env, depth_0bounds=None, cam_resolution=None):
             grad_clip=0.01,
             gamma=0.99,
             q_thres=cfg.dev.q_thres if cfg.get('dev', None) else 0.75,
+            grad_accum_steps=cfg.dev.grad_accum,
         )
         qattention_agents.append(qattention_agent)
 
@@ -484,6 +485,7 @@ def create_agent_with_context(cfg: DictConfig, env,
             emb_weight=cfg.contexts.emb_weight,
             one_hot=(cfg.dev.one_hot or cfg.dev.noisy_one_hot),
             reptile_eps=cfg.dev.reptile_eps,
+            grad_accum_steps=cfg.dev.grad_accum,
         )
         qattention_agents.append(qattention_agent)
 

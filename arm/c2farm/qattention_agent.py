@@ -115,7 +115,8 @@ class QAttentionAgent(Agent):
                  include_low_dim_state: bool = False,
                  image_resolution: list = None,
                  lambda_weight_l2: float = 0.0,
-                 q_thres: float = 0.75
+                 q_thres: float = 0.75,
+                 grad_accum_steps: int = 1, 
                  ):
         self._layer = layer
         self._lambda_trans_qreg = lambda_trans_qreg
@@ -144,6 +145,7 @@ class QAttentionAgent(Agent):
 
         self._name = NAME + '_layer' + str(self._layer)
         self._visualize_q_thres = q_thres 
+        self._grad_accum_steps = grad_accum_steps
 
     def build(self, training: bool, device: torch.device = None):
         if device is None:
@@ -177,6 +179,8 @@ class QAttentionAgent(Agent):
 
             logging.info('# Q Params: %d' % sum(
                 p.numel() for p in self._q.parameters() if p.requires_grad))
+            if self._grad_accum_steps > 1:
+                logging.info('Using gradient accumulation with %d steps' % self._grad_accum_steps)
         else:
             for param in self._q.parameters():
                 param.requires_grad = False
@@ -340,12 +344,20 @@ class QAttentionAgent(Agent):
         loss_weights = utils.loss_weights(replay_sample, REPLAY_BETA)
         combined_delta = q_delta.mean(1)
         total_loss = ((combined_delta + qreg_loss) * loss_weights).mean()
-
-        self._optimizer.zero_grad()
-        total_loss.backward()
-        if self._grad_clip is not None:
-            nn.utils.clip_grad_value_(self._q.parameters(), self._grad_clip)
-        self._optimizer.step()
+        if self._grad_accum_steps > 1:
+            total_loss /= self._grad_accum_steps
+            total_loss.backward()
+            if self._grad_clip is not None:
+                nn.utils.clip_grad_value_(self._q.parameters(), self._grad_clip)
+            if step % self._grad_accum_steps == 0:
+                self._optimizer.step()
+                self._optimizer.zero_grad()
+        else: 
+            self._optimizer.zero_grad()
+            total_loss.backward()
+            if self._grad_clip is not None:
+                nn.utils.clip_grad_value_(self._q.parameters(), self._grad_clip)
+            self._optimizer.step()
 
         self._summaries = {
             'q/mean_qattention': q.mean(),

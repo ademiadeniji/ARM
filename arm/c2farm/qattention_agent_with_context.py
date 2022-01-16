@@ -129,7 +129,7 @@ class QAttentionContextAgent(Agent):
                  emb_lr: float = 0.0001, 
                  lambda_trans_qreg: float = 1e-6,
                  lambda_rot_qreg: float = 1e-6,
-                 grad_clip: float = 20.,
+                 grad_clip: float = 0.1,
                  include_low_dim_state: bool = False,
                  image_resolution: list = None,
                  lambda_weight_l2: float = 0.0,
@@ -140,6 +140,7 @@ class QAttentionContextAgent(Agent):
                  emb_weight: float = 1.0,
                  one_hot: bool = False,
                  reptile_eps: List[float] = [1, 0],
+                 grad_accum_steps: int = 1,
                  ):
         self._layer = layer
         self._lambda_trans_qreg = lambda_trans_qreg
@@ -152,7 +153,7 @@ class QAttentionContextAgent(Agent):
         self._tau = tau
         self._gamma = gamma
         self._nstep = nstep
-        self._lr = lr
+        self._lr = lr 
         self._emb_lr = emb_lr # use a separate lr for embedder net 
         self._grad_clip = grad_clip
         self._include_low_dim_state = include_low_dim_state
@@ -177,6 +178,8 @@ class QAttentionContextAgent(Agent):
         self._one_hot = one_hot 
         self._q_reptile = None 
         self._reptile_eps = [float(eps) for eps in reptile_eps]
+        self._grad_accum_steps = grad_accum_steps
+        
 
     def build(self, training: bool, device: torch.device = None):
         if device is None:
@@ -219,7 +222,9 @@ class QAttentionContextAgent(Agent):
             logging.info('# Q Params: %d' % sum(
                 p.numel() for p in self._q.parameters() if p.requires_grad))
 
-            # if self._layer == 0:
+            if self._grad_accum_steps > 1:
+                logging.info('Using gradient accumulation with %d steps' % self._grad_accum_steps)
+            # if self._layer == 0
             #     self._emb_optimizer = torch.optim.Adam(
             #         self._context_agent._optim_params, lr=self._emb_lr,
             #         weight_decay=self._lambda_weight_l2)
@@ -429,27 +434,27 @@ class QAttentionContextAgent(Agent):
         total_loss = combined_delta + qreg_loss
         # print('loss shape', total_loss.shape, qreg_loss.shape)
          
-        total_loss = (total_loss * loss_weights).sum() 
-       
+        total_loss = (total_loss * loss_weights).mean() 
+ 
         if self._layer == 0 and self._use_emb_loss and not self._one_hot: # otherwise, Replay batch still updates context embedder, BUT not using hinge loss 
-            total_loss += (emb_loss).mean() * self._emb_weight 
-        # DEBUG
-        self._optimizer.zero_grad()
-        total_loss.backward()
-        # (emb_loss).mean().backward()
-        if self._grad_clip is not None:
-            nn.utils.clip_grad_value_(self._q.parameters(), self._grad_clip)
-        self._optimizer.step()
-        # # DEBUG: step here again!
-        # if self._layer == 0:
-        #     self._emb_optimizer.zero_grad()
-        #     if self._update_context_agent:
-        #         emb_loss += total_loss
-        #     emb_loss.backward()
-        #     self._emb_optimizer.step()
-        #     self._optimizer.zero_grad()
-        #     emb_loss = (emb_loss).mean()
-        #     self._optimizer.step()
+            total_loss += (emb_loss).mean() * self._emb_weight  
+
+        if self._grad_accum_steps > 1:
+            total_loss /= self._grad_accum_steps
+            total_loss.backward()
+            if self._grad_clip is not None:
+                nn.utils.clip_grad_value_(self._q.parameters(), self._grad_clip)
+            if step % self._grad_accum_steps == 0:
+                self._optimizer.step()
+                self._optimizer.zero_grad()
+        else: 
+            self._optimizer.zero_grad()
+            total_loss.backward()
+            # (emb_loss).mean().backward()
+            if self._grad_clip is not None:
+                nn.utils.clip_grad_value_(self._q.parameters(), self._grad_clip)
+            self._optimizer.step()
+ 
 
         self._summaries = {
             'q/mean_qattention': q.mean(),
