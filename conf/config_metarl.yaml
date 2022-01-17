@@ -115,6 +115,7 @@ dev:
     normalize_reward: ''  
     grad_accum: 1 
     augment_batch: 0
+    augment_reward: False 
 
 contexts:
   num_update_itrs: 5

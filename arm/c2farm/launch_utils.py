@@ -133,6 +133,7 @@ def _add_keypoints_to_replay(
         task: str,
         variation: int, 
         task_id: int, 
+        augment_reward: False, 
         ):
     prev_action = None
     obs = inital_obs
@@ -144,7 +145,9 @@ def _add_keypoints_to_replay(
 
         terminal = (k == len(episode_keypoints) - 1)
         reward = float(terminal) * REWARD_SCALE if terminal else 0
-
+        if augment_reward:
+            reward = 1.0 * REWARD_SCALE * max(k / len(episode_keypoints), 0.1)
+             
         obs_dict = env.extract_obs(obs, t=k, prev_action=prev_action)
         prev_action = np.copy(action)
 
@@ -192,6 +195,7 @@ def fill_replay(replay: ReplayBuffer,
                 crop_augmentation: bool,
                 variation: int = 0,
                 task_id: int = 0,
+                augment_reward: bool = False,
                 ):
 
     logging.info(f'Task {task} variation#{variation} Filling replay with {num_demos} demos...')
@@ -230,7 +234,7 @@ def fill_replay(replay: ReplayBuffer,
             _add_keypoints_to_replay(
                 replay, initial_obs, demo, env, episode_keypoints, cameras,
                 rlbench_scene_bounds, voxel_sizes, bounds_offset,
-                rotation_resolution, crop_augmentation, task, variation, task_id)
+                rotation_resolution, crop_augmentation, task, variation, task_id, augment_reward)
     #logging.info('Replay filled with demos.')
 
 def create_agent(cfg: DictConfig, env, depth_0bounds=None, cam_resolution=None):

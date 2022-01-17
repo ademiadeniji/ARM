@@ -125,7 +125,7 @@ def run_seed(
                     var = int( task_var.split("_")[-1])  
                     c2farm.launch_utils.fill_replay(
                         r, one_task, env, 
-                        cfg.rlbench.demos,
+                        (cfg.rlbench.demos if one_task not in cfg.tasks.get('no_demo_tasks', []) else 0),
                         cfg.method.demo_augmentation, 
                         cfg.method.demo_augmentation_every_n,
                         cams, 
@@ -155,7 +155,8 @@ def run_seed(
                         cfg.method.voxel_sizes, 
                         replay_size=cfg.replay.replay_size)
                     c2farm.launch_utils.fill_replay(
-                        r, one_task, env, cfg.rlbench.demos,
+                        r, one_task, env, 
+                        (cfg.rlbench.demos if one_task not in cfg.tasks.get('no_demo_tasks', []) else 0),
                         cfg.method.demo_augmentation, 
                         cfg.method.demo_augmentation_every_n,
                         cams, cfg.rlbench.scene_bounds,
@@ -165,6 +166,7 @@ def run_seed(
                         cfg.method.crop_augmentation,
                         variation=var,
                         task_id=i,
+                        augment_reward=cfg.dev.augment_reward,
                         )
                     task_var_to_replay_idx[i][var] = len(replays)
                     replays.append(r)
@@ -238,6 +240,7 @@ def run_seed(
         noisy_one_hot=cfg.dev.noisy_one_hot, 
         num_task_vars=num_all_vars,
         task_var_to_replay_idx=task_var_to_replay_idx,
+        augment_reward=cfg.dev.augment_reward,
         )
 
     device_list = [ i for i in range(torch.cuda.device_count()) ]
@@ -412,6 +415,10 @@ def main(cfg: DictConfig) -> None:
         tasks_name = f'{len(tasks)}Task-{use_vars_count}var' 
         if len(cfg.tasks.heldout) > 1:
             tasks_name += f'-Heldout-{cfg.tasks.heldout}'
+        if len(cfg.tasks.get('no_demo_tasks', [])) == 1:
+            tasks_name += f'-NoDemo-{cfg.tasks.no_demo_tasks[0]}'
+        if len(cfg.tasks.get('no_demo_tasks', [])) > 1:
+            tasks_name += f'-NoDemo-{len(cfg.tasks.no_demo_tasks)}Tasks'
         logging.info(f'Got {len(tasks)} tasks, re-naming the run as: {tasks_name}')
     cfg.tasks_name = tasks_name
      

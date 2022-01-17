@@ -1,0 +1,10 @@
+all_tasks: [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,push_button,reach_target,lamp_on,take_lid_off_saucepan,stack_wine,open_door,take_usb_out_of_computer]
+cameras: [front]
+num_vars: -1 
+heldout: ''
+no_demo_tasks: [take_lid_off_saucepan]
+demo_length: 1
+train_steps: 20000 
+log_freq:   250 
+
+# use this to compare 1) 0 demo on training task v.s. 2) fine-tuning with 0 demo 
