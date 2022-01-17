@@ -114,6 +114,7 @@ dev:
     reptile_k: 5 
     normalize_reward: ''  
     grad_accum: 1 
+    augment_batch: 0
 
 contexts:
   num_update_itrs: 5

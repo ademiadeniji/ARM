@@ -171,6 +171,10 @@ def run_seed(
                 # print(f"Task id {i}: {one_task}, **created** and filled replay for {len(its_variations)} variations")
             print('Created mapping from var ids to buffer ids:', task_var_to_replay_idx)
             cfg.replay.total_batch_size = int(cfg.replay.batch_size * cfg.replay.buffers_per_batch)
+            if cfg.dev.augment_batch > 0:
+                cfg.replay.total_batch_size = int(
+                    (cfg.replay.batch_size + cfg.dev.augment_batch) * cfg.replay.buffers_per_batch)
+
               
 
         if cfg.mt_only:
