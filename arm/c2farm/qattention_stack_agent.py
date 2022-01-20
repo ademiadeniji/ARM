@@ -134,6 +134,19 @@ class QAttentionStackAgent(Agent):
     def save_weights(self, savedir: str):
         for qa in self._qattention_agents:
             qa.save_weights(savedir)
+    
+    def update_reptile(self, step: int, replay_sample: dict, k_step: int) -> dict:
+        # saves a copy of params before k_steps and soft update after all k_steps are done 
+        # takes in samples (N,K,...) and do separate N updates 
+        if k_step == 0:
+            for qa in self._qattention_agents:
+                qa.reptile_save_weights()
+        return self.update(step, replay_sample)
+    
+    def update_reptile_outer(self, frac_done: float):
+        for qa in self._qattention_agents:
+            qa.reptile_soft_update(frac_done)
+        return 
 
 class QAttentionStackContextAgent(QAttentionStackAgent):
     def __init__(self,
@@ -192,19 +205,7 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
             'task_prio': task_priorities  ** REPLAY_ALPHA,
             'var_prio': var_priorities  ** REPLAY_ALPHA,
         }
-    
-    def update_reptile(self, step: int, replay_sample: dict, k_step: int) -> dict:
-        # saves a copy of params before k_steps and soft update after all k_steps are done 
-        # takes in samples (N,K,...) and do separate N updates 
-        if k_step == 0:
-            for qa in self._qattention_agents:
-                qa.reptile_save_weights()
-        return self.update(step, replay_sample)
-    
-    def update_reptile_outer(self, frac_done: float):
-        for qa in self._qattention_agents:
-            qa.reptile_soft_update(frac_done)
-        return 
+
 
     def update_context_only(self, step: int, replay_sample: dict, classify: bool, emb_weight: float) -> dict:
         """ Only uses the QAttentionAgent's Optimizer to step hinge loss """

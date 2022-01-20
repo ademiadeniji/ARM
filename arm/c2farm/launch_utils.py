@@ -300,6 +300,7 @@ def create_agent(cfg: DictConfig, env, depth_0bounds=None, cam_resolution=None):
             gamma=0.99,
             q_thres=cfg.dev.q_thres if cfg.get('dev', None) else 0.75,
             grad_accum_steps=cfg.dev.grad_accum,
+            reptile_eps=cfg.dev.reptile_eps,
         )
         qattention_agents.append(qattention_agent)
 
