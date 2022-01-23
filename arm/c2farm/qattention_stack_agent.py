@@ -178,20 +178,22 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
             one layer to another"""
         # utils.visualize_batch(replay_sample, filename='/home/mandi/ARM/debug/one_batch', img_size=128)
         # raise ValueError
-        act_result = self._context_agent.act_for_replay(step, replay_sample, output_loss=self._qattention_agents[0]._use_emb_loss)
+        act_result = self._context_agent.act_for_replay(
+            step, replay_sample, output_loss=self._qattention_agents[0]._use_emb_loss)
         replay_sample['prev_layer_encoded_context'] = act_result.action.to(self._device)
         replay_sample['prev_layer_encoded_context_target'] = act_result.info.get('embeddings_target', act_result.action).to(self._device)
-        if act_result.info.get('emb_loss', None) is not None:
-            replay_sample['emb_loss'] = act_result.info.get('emb_loss')
-
+        
+        
         # Samples are (B, K, ...) where we sample B buffers for each batch and get K transitions from each buffer
         # note this K could be different between context part and obs part 
-        replay_sample = {k: rearrange(v, 'b k ... -> (b k) ... ') for k, v in replay_sample.items() if len(v.shape) > 1}
+        replay_sample = {k: rearrange(v, 'b k ... -> (b k) ... ') if len(v.shape) > 1 else v \
+            for k, v in replay_sample.items()}
+        if act_result.info.get('emb_loss', None) is not None: 
+            replay_sample['emb_loss'] = act_result.info.get('emb_loss') 
 
         priorities = 0
         task_priorities, var_priorities = 0, 0 
-        for qa in self._qattention_agents:
-            #print('\n Updating qa layer: ', qa._layer)
+        for qa in self._qattention_agents: 
             update_dict = qa.update(step, replay_sample)
             if self._pass_down_context:
                 assert 'prev_layer_encoded_context' in update_dict.keys(), 'Need previous layer to pass down encoded context'

@@ -116,7 +116,22 @@ dev:
     grad_accum: 1 
     augment_batch: 0
     augment_reward: False 
+    use_pearl: False 
+    pearl_window_size: 10
+    pearl_context_size: 3
+    pearl_onpolicy_context: True  #if false, also sample demonstration transitions as context 
 
+pearl_encoder:
+  encode_next_obs: False 
+  conv_kernel_sizes: [3,3]
+  conv_out_channels: [32,32]
+  strides: [2,2]
+  action_size: 8 
+  norm: None 
+  activation: 'lrelu'
+  mlp_hidden_sizes: [512]
+  output_size: 16
+ 
 contexts:
   num_update_itrs: 5
   val_freq:   -1

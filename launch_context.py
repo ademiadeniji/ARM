@@ -169,16 +169,17 @@ def run_seed(
                         augment_reward=cfg.dev.augment_reward,
                         )
                     task_var_to_replay_idx[i][var] = len(replays)
+                    if cfg.dev.pearl_onpolicy_context:
+                        r.update_demo_cursor()
                     replays.append(r)
+                    
                 # print(f"Task id {i}: {one_task}, **created** and filled replay for {len(its_variations)} variations")
             print('Created mapping from var ids to buffer ids:', task_var_to_replay_idx)
             cfg.replay.total_batch_size = int(cfg.replay.batch_size * cfg.replay.buffers_per_batch)
             if cfg.dev.augment_batch > 0:
                 cfg.replay.total_batch_size = int(
                     (cfg.replay.batch_size + cfg.dev.augment_batch) * cfg.replay.buffers_per_batch)
-
-              
-
+ 
         if cfg.mt_only:
             agent = c2farm.launch_utils.create_agent(cfg, env)
         else:
@@ -211,7 +212,7 @@ def run_seed(
         with open(os.path.join(logdir, 'action_min_max.pkl'), 'wb') as f:
             pickle.dump(action_min_max, f)
 
-    if not (cfg.mt_only or cfg.dev.one_hot or cfg.dev.noisy_one_hot):
+    if not (cfg.mt_only or cfg.dev.one_hot or cfg.dev.noisy_one_hot or cfg.contexts.loss_mode == 'pearl'):
         logging.info('\n Making dataloaders for context batch training')
         # ctxt_train_loader = make_loader(cfg.contexts, 'train', train_demo_dataset)
         # ctxt_val_loader  = make_loader(cfg.contexts,'val', val_demo_dataset)
@@ -241,6 +242,8 @@ def run_seed(
         num_task_vars=num_all_vars,
         task_var_to_replay_idx=task_var_to_replay_idx,
         augment_reward=cfg.dev.augment_reward,
+        replay_buffers=None,
+        dev_cfgs=cfg.dev,
         )
 
     device_list = [ i for i in range(torch.cuda.device_count()) ]
@@ -271,7 +274,8 @@ def run_seed(
         eval_episodes=cfg.framework.num_log_episodes,
         log_freq=cfg.framework.log_freq, 
         target_replay_ratio=cfg.framework.replay_ratio,
-        final_checkpoint_step=int(cfg.framework.training_iterations-1)
+        final_checkpoint_step=int(cfg.framework.training_iterations-1),
+        dev_cfg=cfg.dev,
         )  
 
     if cfg.framework.wandb:
@@ -334,9 +338,7 @@ def run_seed(
 
 
 @hydra.main(config_name='config_metarl', config_path='conf')
-def main(cfg: DictConfig) -> None: 
-
-    
+def main(cfg: DictConfig) -> None:  
 
     if cfg.framework.gpu is not None and torch.cuda.is_available():
         device = torch.device("cuda:%d" % cfg.framework.gpu) 
@@ -454,7 +456,7 @@ def main(cfg: DictConfig) -> None:
     cfg.log_path = log_path 
     # logging.info('\n' + OmegaConf.to_yaml(cfg))
 
-    if cfg.mt_only or cfg.dev.one_hot or cfg.dev.noisy_one_hot :
+    if cfg.mt_only or cfg.dev.one_hot or cfg.dev.noisy_one_hot or cfg.contexts.loss_mode == 'pearl':
         train_demo_dataset, val_demo_dataset = None, None 
     else:
         # make demo dataset and align idxs with task id in the environment 

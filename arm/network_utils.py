@@ -123,7 +123,7 @@ class Conv3DBlock(nn.Module):
                  kernel_sizes: Union[int, list], strides,
                  norm=None, activation=None, padding_mode='replicate',
                  padding=None, residual=False):
-        super(Conv3DBlock, self).__init__()
+        super(Conv3DBlock, self).__init__() 
         padding = kernel_sizes // 2 if padding is None else padding
         self.conv3d = nn.Conv3d(
             in_channels, out_channels, kernel_sizes, strides, padding=padding,

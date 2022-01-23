@@ -19,13 +19,35 @@ from itertools import chain
 import logging
 from yarr.utils.multitask_rollout_generator import TASK_ID, VAR_ID # use this to get K_action
 
-
 import torchvision.transforms as T
 import torchvision.transforms.functional as TF 
 
 NAME = 'ContextEmbedderAgent'
 CONTEXT_KEY = 'demo_sample'
 
+def _product_of_gaussians(mus, sigmas_squared):
+        '''
+        compute mu, sigma of product of gaussians
+        '''
+        sigmas_squared = torch.clamp(sigmas_squared, min=1e-7)
+        sigma_squared = 1. / torch.sum(torch.reciprocal(sigmas_squared), dim=0)
+        mu = sigma_squared * torch.sum(mus / sigmas_squared, dim=0)
+        return mu, sigma_squared
+        
+def _compute_kl_loss(z_means, z_vars):
+        """ compute KL( q(z|c) || r(z) ) """
+        latent_dim = z_means.shape[-1]
+        device = z_means.device
+        assert z_vars.shape[-1] == latent_dim
+        prior = torch.distributions.Normal(
+            torch.zeros(latent_dim).to(device), 
+            torch.ones(latent_dim).to(device)
+            )
+        posteriors = [torch.distributions.Normal(m, torch.sqrt(s)) \
+            for m, s in zip(torch.unbind(z_means), torch.unbind(z_vars))]
+        kl_divs = [torch.distributions.kl.kl_divergence(post, prior) for post in posteriors]
+        kl_div_sum = torch.sum(torch.stack(kl_divs))
+        return kl_div_sum
 
 class SequenceStrategy(ABC):
 
@@ -46,7 +68,7 @@ class StackOnChannel(SequenceStrategy):
         # expect (B, T * C, ...)
         return torch.cat(x.unsqueeze(1).split(self._channels, dim=2), dim=1)
 
-
+ 
 class StackOnBatch(SequenceStrategy):
 
     def __init__(self):
@@ -64,7 +86,13 @@ class StackOnBatch(SequenceStrategy):
 
 class ContextAgent(Agent):
     """Merge train and test time embeddingAgent 
-    (from QAttentionMultitask.EmbeddingAgent) into one"""
+    (from QAttentionMultitask.EmbeddingAgent) into one
+    Warning for PEARL agent:
+        - Context requires roughly "on-policy" transitions; 
+        - need to compute product of gaussians; 
+        - embedding net gets updated by both KL-loss and Qattention loss  
+    
+    """
 
     def __init__(self,
                  embedding_net: nn.Module,
@@ -106,7 +134,8 @@ class ContextAgent(Agent):
         self._margin = margin
         self._emb_lambda = emb_lambda
         #   PEARL
-        self._prod_of_gaus_factors_over_batch = prod_of_gaus_factors_over_batch
+        if 'pearl' in self._loss_mode:
+            self.pearl_latent_size = self._embedding_net.latent_size
         self._name = NAME 
         self._replay_update_freq = replay_update_freq # else, freeze emb net update 
         self._use_target_embedder = use_target_embedder
@@ -124,14 +153,7 @@ class ContextAgent(Agent):
             
             emb_dim = embedding_size * 4 # hack 
             self._hidden_dim = hidden_dim if hidden_dim > 0 else emb_dim
-            if hidden_dim > 0:
-                # self._predictor = nn.Sequential(
-                # nn.ReLU(inplace=True),
-                # nn.Linear(emb_dim, hidden_dim),
-                # nn.ReLU(inplace=True),
-                # nn.Linear(hidden_dim, emb_dim),
-                # nn.LayerNorm(emb_dim)
-                # )
+            if hidden_dim > 0: 
                 self._predictor = nn.Sequential(
                 nn.ReLU(inplace=True),
                 nn.Linear(emb_dim, hidden_dim),
@@ -178,15 +200,54 @@ class ContextAgent(Agent):
             self._predictor_target.to(device)
             self._W = nn.Parameter(torch.rand(self._hidden_dim, self._emb_dim, requires_grad=True, device=device)) 
             additional_params = [self._W] + [p for p in self._predictor.parameters() if p.requires_grad]
+         
         if training:
-            self._optimizer, self._optim_params = make_optimizer(
-                self._embedding_net, self._encoder_cfg, return_params=True, additional_params=additional_params)
-        
+            if 'hinge' in self._loss_mode:
+                self._optimizer, self._optim_params = make_optimizer(
+                    self._embedding_net, self._encoder_cfg, return_params=True, additional_params=additional_params)
+            elif 'pearl' in self._loss_mode:
+                self._optimizer = None 
+                self._optim_params = [{'params': self._embedding_net.parameters()}]
+
         if self._use_target_embedder:
             self._embedding_net_target.set_device(device)
+  
+
+    def pearl_act_for_replay(self, step, replay_sample, output_loss=False):
+        task_ids = replay_sample[TASK_ID] # this should be (B, K_action, ...)
+        k_action = task_ids.shape[1]
+
+        b, k, n, c, h, w = replay_sample['context_obs'].shape
+        assert c == 3, 'channel dim mut at index 3'
+        replay_sample['context_obs'] = rearrange(
+            replay_sample['context_obs'], 'b k n c h w -> (b k) c n h w')
+        for key in ['context_action', 'context_reward']:
+            replay_sample[key] = rearrange(replay_sample[key], 'b k ... -> (b k) ...')
+        out = self._embedding_net(replay_sample)
+        out = rearrange(out, '(b k) d -> b k d', b=b)
+        size = self.pearl_latent_size
+        mus, sigmas = out[:, :, :size], F.softplus(out[:, :, size:])
+        z_params = [_product_of_gaussians(m, s) for m, s in zip(torch.unbind(mus), torch.unbind(sigmas))]
+        z_means = torch.stack([p[0] for p in z_params])
+        z_vars = torch.stack([p[1] for p in z_params])
+
+        posteriors = [torch.distributions.Normal(m, torch.sqrt(s)) \
+                for m, s in zip(torch.unbind(z_means), torch.unbind(z_vars))]
+        z = [d.rsample() for d in posteriors]
+        z = torch.stack(z)
+        kl_loss = _compute_kl_loss(z_means, z_vars)
+
+        action_embeddings = repeat(z, 'b d -> b k d', b=b, k=k_action) 
+        info = {'emb_loss': kl_loss}
+        self._replay_summaries = {
+                    'replay_batch/'+k: torch.mean(v) for k,v in info.items()}
+        return ActResult(action_embeddings, info=info)
  
     def act_for_replay(self, step, replay_sample, output_loss=False):
         """Use this to embed context only for qattention agent update"""
+        if self._loss_mode == 'pearl':
+            return self.pearl_act_for_replay(step, replay_sample, output_loss)
+
         data = replay_sample[CONTEXT_KEY].to(self._device) 
         if self._one_hot:
             return ActResult(data) 
@@ -245,10 +306,39 @@ class ContextAgent(Agent):
             
         return act_result
         
+    def set_context_z(self, context_batch):
+        assert 'pearl' in self._loss_mode
+        size = self.pearl_latent_size
+        
+        if len(context_batch) == 0:
+            prior = torch.distributions.Normal(
+                torch.zeros(size), torch.ones(size)) 
+            self.z = prior.rsample() 
+            return 
+        k, n, c, h, w = context_batch['context_obs'].shape
+        assert c == 3, 'channel dim mut at index 3'
+        context_batch['context_obs'] = rearrange(context_batch['context_obs'], 'k n c h w -> k c n h w')
+        out = self._embedding_net(context_batch) # shape K, d, no batch dim 
+         
+        mu, sigma = out[:, :size], F.softplus(out[:, size:])
+        z_params = _product_of_gaussians(mu, sigma)
+        self.z_mean = z_params[0]
+        self.z_var =  z_params[1]
+
+        posterior = torch.distributions.Normal(
+            self.z_mean, torch.sqrt(self.z_var))
+         
+        self.z = posterior.rsample().detach()
+         
+
+    
     def act(self, step: int, observation: dict,
             deterministic=False) -> ActResult:
         """observation batch may require different input preprocessing, handle here """
         # print('context agent input:', observation.keys()) 
+        if 'pearl' in self._loss_mode:
+            return ActResult(self.z)
+ 
         data = observation[CONTEXT_KEY].to(self._device)
         if self._one_hot:
             return ActResult(data)
@@ -265,6 +355,7 @@ class ContextAgent(Agent):
         if 'info' not in self._loss_mode:
             embeddings = embeddings / embeddings.norm(dim=1, p=2, keepdim=True) 
         self._current_context = embeddings.detach().requires_grad_(False)
+    
         return ActResult(self._current_context)
         
     def set_new_context(self, observation: dict):
@@ -392,21 +483,7 @@ class ContextAgent(Agent):
             val_dict = self.update(step, context_batch, val=True)
         return val_dict 
 
-    def _compute_kl_loss(self, mu, sigma_sqrd):
-        # ref: https://github.com/katerakelly/oyster/blob/cd09c1ae0e69537ca83004ca569574ea80cf3b9c/rlkit/torch/sac/agent.py#L117
-        guassian_prior = torch.distributions.Normal(
-            torch.zeros_like(mu), torch.ones_like(sigma_sqrd))
-        # ref: https://github.com/katerakelly/oyster/blob/cd09c1ae0e69537ca83004ca569574ea80cf3b9c/rlkit/torch/sac/agent.py#L116
-        posterior = torch.distributions.Normal(mu, torch.sqrt(sigma_sqrd))
-        self._loss = torch.distributions.kl.kl_divergence(posterior, guassian_prior).mean()
-        # ToDo: add more informative accuracy measure
-        self._embedding_accuracy = 0
-
-        return {
-            'context': torch.cat((mu, sigma_sqrd), -1).mean(1),
-            'mean_emb_loss': self._loss
-        }
-
+    
     def _compute_hinge_loss(self, embeddings, val=False): 
         b, k, d = embeddings.shape 
         embeddings_norm = embeddings / embeddings.norm(dim=2, p=2, keepdim=True)

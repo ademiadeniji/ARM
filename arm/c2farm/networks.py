@@ -9,12 +9,15 @@ if str(Path.cwd()) not in sys.path:
     sys.path.insert(0, str(Path.cwd()))
 
 from arm.network_utils import \
-    Conv3DInceptionBlock, Conv3DInceptionBlockUpsampleBlock, \
+    Conv2DBlock, Conv3DInceptionBlock, Conv3DInceptionBlockUpsampleBlock, \
     DenseBlock, SpatialSoftmax3D, \
     Conv3DBlock, Conv3DUpsampleBlock, \
     Conv3DResNetBlock, Conv3DResNetUpsampleBlock
+from typing import List, Union, Tuple
 from einops import rearrange, reduce, repeat, parse_shape
 LRELU_SLOPE = 0.02 
+IMG_SIZE=128 
+
 def sample_gumbel_softmax(context, tau=0.01, eps=1e-20, discrete=True): 
   """ Draw a sample from the Gumbel-Softmax distribution"""
   assert len(context.shape) == 2
@@ -867,29 +870,107 @@ class Qattention3DNetWithFiLM(Qattention3DNet):
         
         return trans, rot_and_grip_out, None  # in place of encoded_context
 
+class PEARLContextEncoder(nn.Module):
+    """Encode 1 or 2 observation frames, concat with 8-dim action and 1-dim reward"""
+    def __init__(self,  
+                 encode_next_obs: bool = True, 
+                 conv_kernel_sizes: bool = [3],
+                 conv_out_channels: List[int] = [32],
+                 strides: List[int] = [3],
+                 action_size: int = 8,
+                 norm: str = None,
+                 activation: str = 'lrelu',
+                 mlp_hidden_sizes: list = [128], 
+                 output_size: int = 32
+                 ):
+        super(PEARLContextEncoder, self).__init__()
+        self._encode_next_obs = encode_next_obs
+        conv_block = Conv3DBlock if encode_next_obs else Conv2DBlock
+        assert len(conv_kernel_sizes) == len(conv_out_channels) == len(strides), 'Must specify same length'
+        conv_blocks = []
+        for i, kernel in enumerate(conv_kernel_sizes):
+            block = conv_block(
+                in_channels=(3 if i == 0 else conv_out_channels[i-1]), 
+                out_channels=conv_out_channels[i], 
+                kernel_sizes=kernel, 
+                activation=activation,
+                strides=strides[i],
+                )
+            conv_blocks.append(block)  
+        self._conv_blocks = nn.Sequential(*conv_blocks)
+        dummy_inp = torch.zeros(1, 3, 2, IMG_SIZE, IMG_SIZE)  if encode_next_obs else torch.zeros(1, 3, IMG_SIZE, IMG_SIZE) 
+         
+        dummy_out = self._conv_blocks(dummy_inp)
+        
+        conv_out_size = torch.flatten(dummy_out, start_dim=1).shape[-1]
+        print(f'Building Context Encoder MLP with conv flattened input size {conv_out_size}, output size {output_size}')
+        
+        conv_out_size += action_size +  1
+        mlps = []
+        for i, hidden_size in enumerate(mlp_hidden_sizes):
+            mlps.append(
+                DenseBlock(
+                    in_features=conv_out_size if i == 0 else mlp_hidden_sizes[i-1],
+                    out_features=hidden_size,
+                    norm=None,
+                    activation=activation,
+                )
+            )
+        mlps.append(
+            DenseBlock(
+                in_features=mlp_hidden_sizes[-1],
+                out_features=output_size * 2, # need to predict both mean and std 
+                norm=None,
+                activation=activation,
+            )
+        )
+        self._mlps = nn.Sequential(*mlps)
+        self.latent_size = output_size 
+        self._device = None
+
+    def forward(self, replay_sample):
+        conv_in = replay_sample['context_obs'].to(self._device)  
+        assert conv_in.shape[1] == 3, 'Must have shape b, channel, n_frames, h, w'
+        if not self._encode_next_obs:
+            conv_in = conv_in[:, :, 0]
+        conv_out = self._conv_blocks(conv_in) 
+        conv_out = torch.cat(
+                [
+                    conv_out.flatten(start_dim=1), 
+                    replay_sample['context_action'].to(self._device) ,
+                    replay_sample['context_reward'].to(self._device) 
+                ], dim=1)
+        
+        mlp_out = self._mlps(conv_out) 
+         
+        return mlp_out
+
+    def set_device(self, device):
+        self._device = device 
+        self.to(device)
 
 if __name__ == '__main__':
-    qnet = Qattention3DNetWithContext(
-        in_channels=10,
-        out_channels=1,
-        voxel_size=16,
-        out_dense=0,
-        kernels=64,
-        norm=None, 
-        dense_feats=128,
-        activation='lrelu',
-        low_dim_size=10,
-        inp_context_size=20,
-        dev_cfgs={'conv3d':False},
-        )
-    qnet.build()
-    b = 1
-    ins = torch.ones(b, 10 , 3,128,128)
-    prop = torch.ones(b,10)
-    context = torch.ones(b, 20)
-    print(qnet(ins, prop, None, context).shape)
-    num_params = sum([p.numel() for p in qnet.parameters() if p.requires_grad])
-    print('Qattention3DNetWithContext # of params:', num_params)
+    # qnet = Qattention3DNetWithContext(
+    #     in_channels=10,
+    #     out_channels=1,
+    #     voxel_size=16,
+    #     out_dense=0,
+    #     kernels=64,
+    #     norm=None, 
+    #     dense_feats=128,
+    #     activation='lrelu',
+    #     low_dim_size=10,
+    #     inp_context_size=20,
+    #     dev_cfgs={'conv3d':False},
+    #     )
+    # qnet.build()
+    # b = 1
+    # ins = torch.ones(b, 10 , 3,128,128)
+    # prop = torch.ones(b,10)
+    # context = torch.ones(b, 20)
+    # print(qnet(ins, prop, None, context).shape)
+    # num_params = sum([p.numel() for p in qnet.parameters() if p.requires_grad])
+    # print('Qattention3DNetWithContext # of params:', num_params)
 
     # qnet = Qattention3DNetWithContext(
     #     in_channels=10,
@@ -908,28 +989,78 @@ if __name__ == '__main__':
     # num_params = sum([p.numel() for p in qnet.parameters() if p.requires_grad])
     # print('Qattention3DNetWithContext # of params:', num_params)
 
-    qnet = Qattention3DNetWithFiLM(
-        in_channels=10,
-        out_channels=1,
-        voxel_size=16,
-        out_dense=0,
-        kernels=64,
-        norm=None, 
-        dense_feats=128,
+    # qnet = Qattention3DNetWithFiLM(
+    #     in_channels=10,
+    #     out_channels=1,
+    #     voxel_size=16,
+    #     out_dense=0,
+    #     kernels=64,
+    #     norm=None, 
+    #     dense_feats=128,
+    #     activation='lrelu',
+    #     low_dim_size=10,
+    #     use_context=False,
+    #     inp_context_size=20,
+    #     dev_cfgs={'conv3d': False},
+    #     )
+    # qnet.build()
+    # b = 1
+    # ins = torch.ones(b, 10, 3,128,128)
+    # prop = torch.ones(b,10)
+    # context = torch.ones(b, 20)
+    # print(qnet(ins, prop, None, context).shape)
+    # num_params = sum([p.numel() for p in qnet.parameters() if p.requires_grad])
+    # print('Qattention3DNetWithFiLM # of params:', num_params)
+    encoder = PEARLContextEncoder(
+        encode_next_obs=False, 
+        conv_kernel_sizes=[3, 3],
+        conv_out_channels=[32, 32],
+        strides=[2,2],
+        action_size=8,
+        norm=None,
         activation='lrelu',
-        low_dim_size=10,
-        use_context=False,
-        inp_context_size=20,
-        dev_cfgs={'conv3d': False},
+        mlp_hidden_sizes=[256, 128], 
+        output_size=16
         )
-    qnet.build()
-    b = 1
-    ins = torch.ones(b, 10, 3,128,128)
-    prop = torch.ones(b,10)
-    context = torch.ones(b, 20)
-    print(qnet(ins, prop, None, context).shape)
-    num_params = sum([p.numel() for p in qnet.parameters() if p.requires_grad])
-    print('Qattention3DNetWithFiLM # of params:', num_params)
+    inp = {
+        'context_obs': torch.ones(6, 3, 2, IMG_SIZE, IMG_SIZE),
+        'context_action': torch.ones(6, 8),
+        'context_reward': torch.ones(6, 1)
+    } 
+    out = encoder(inp) # B*K, 32
+    batch = 3
+    out = rearrange(out, '(b k) d -> b k d', b=batch)
+    mus, sigmas = out[:,:,:16], F.softplus(out[:,:,16:])
 
 
-    
+    def _product_of_gaussians(mus, sigmas_squared):
+        '''
+        compute mu, sigma of product of gaussians
+        '''
+        sigmas_squared = torch.clamp(sigmas_squared, min=1e-7)
+        sigma_squared = 1. / torch.sum(torch.reciprocal(sigmas_squared), dim=0)
+        mu = sigma_squared * torch.sum(mus / sigmas_squared, dim=0)
+        return mu, sigma_squared
+   
+    mu, sigma_squared = _product_of_gaussians(mus[0], sigmas[0])
+    print(mu.shape, sigma_squared.shape)
+    print([m.shape for m in torch.unbind(mus)])
+    z_params = [_product_of_gaussians(m, s) for m, s in zip(torch.unbind(mus), torch.unbind(sigmas))]
+    z_means = torch.stack([p[0] for p in z_params])
+    z_vars = torch.stack([p[1] for p in z_params])
+
+    posteriors = [torch.distributions.Normal(m, torch.sqrt(s)) \
+            for m, s in zip(torch.unbind(z_means), torch.unbind(z_vars))]
+    z = [d.rsample() for d in posteriors]
+    z = torch.stack(z)
+    print(z.shape)
+    def compute_kl_loss(z_means, z_vars):
+        """ compute KL( q(z|c) || r(z) ) """
+        prior = torch.distributions.Normal(
+            torch.zeros(16), torch.ones(16))
+        posteriors = [torch.distributions.Normal(m, torch.sqrt(s)) \
+            for m, s in zip(torch.unbind(z_means), torch.unbind(z_vars))]
+        kl_divs = [torch.distributions.kl.kl_divergence(post, prior) for post in posteriors]
+        kl_div_sum = torch.sum(torch.stack(kl_divs))
+        return kl_div_sum
+    print(compute_kl_loss(z_means, z_vars))

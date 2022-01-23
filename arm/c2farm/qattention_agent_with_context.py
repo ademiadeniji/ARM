@@ -347,7 +347,7 @@ class QAttentionContextAgent(Agent):
         context = replay_sample['prev_layer_encoded_context'].to(self._device) 
         context_target = replay_sample.get('prev_layer_encoded_context_target', context).to(self._device) 
         emb_loss = replay_sample.get('emb_loss',  None)
-        if self._use_emb_loss and not self._one_hot:
+        if self._use_emb_loss and not self._one_hot: 
             assert emb_loss is not None, 'Context agent should also output loss'
             emb_loss = emb_loss.mean().to(self._device) 
 

@@ -14,7 +14,7 @@ from yarr.replay_buffer.uniform_replay_buffer import UniformReplayBuffer
 from arm import demo_loading_utils, utils
 from arm.custom_rlbench_env import CustomRLBenchEnv
 from arm.preprocess_agent import PreprocessAgent
-from arm.c2farm.networks import Qattention3DNet, Qattention3DNetWithContext, Qattention3DNetWithFiLM
+from arm.c2farm.networks import Qattention3DNet, Qattention3DNetWithContext, Qattention3DNetWithFiLM, PEARLContextEncoder
 from arm.c2farm.qattention_agent import QAttentionAgent
 from arm.c2farm.qattention_agent_with_context import QAttentionContextAgent
 from arm.c2farm.qattention_stack_agent import QAttentionStackAgent, QAttentionStackContextAgent
@@ -314,7 +314,7 @@ def create_agent(cfg: DictConfig, env, depth_0bounds=None, cam_resolution=None):
 
 def create_agent_with_context(cfg: DictConfig, env, 
         depth_0bounds=None, cam_resolution=None):
-    """let's keep the hinge/representation loss completely separate from 
+    """ The hinge/representation loss completely separate from 
         replay_sampled used for Q-attention updates: have an context_agent to calculate 
         embeddings and embedding losses, but a separate update() function that only takes in
         context inputs (i.e. no actions/terminal/other info); context_agent also has an act()
@@ -344,16 +344,21 @@ def create_agent_with_context(cfg: DictConfig, env,
     #     activation=cfg.method.activation, # same as c2farm
     #     fc_layers=[64, 64, embedding_size]
     #     )  
-    embedding_net = TempResNet(cfg.encoder) 
+     
     if cfg.dev.get('discrete', False):
         logging.info('Using discrete embedding context!')   
         context_agent = DiscreteContextAgent(   
-            embedding_net=embedding_net, 
+            embedding_net=None, 
             replay_update_freq=cfg.dev.replay_update_freq,
             **cfg.contexts.discrete_agent
             )             
-    else:
-        
+    else:  
+        if 'pearl' in cfg.contexts.loss_mode:
+            embedding_net = PEARLContextEncoder(**cfg.pearl_encoder)
+            assert cfg.pearl_encoder.output_size == 16 == embedding_net.latent_size
+            cfg.contexts.agent.encoder_cfg = cfg.pearl_encoder
+        else:
+            embedding_net = TempResNet(cfg.encoder)
         context_agent = ContextAgent(
             embedding_net=embedding_net, 
             camera_names=cfg.rlbench.cameras,
@@ -383,6 +388,9 @@ def create_agent_with_context(cfg: DictConfig, env,
 
         if cfg.dev.discrete and cfg.contexts.loss_mode == 'gumbel' and cfg.contexts.discrete_agent.latent_dim == 3:
             ctxt_size = 16 * 2048
+
+        if 'pearl' in cfg.contexts.loss_mode:
+            ctxt_size = cfg.pearl_encoder.output_size
 
     logging.info('Setting context input size to {}'.format(ctxt_size))
     for depth, vox_size in enumerate(cfg.method.voxel_sizes):
