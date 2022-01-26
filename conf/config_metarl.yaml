@@ -110,13 +110,14 @@ dev:
     ctxt_conv3d: False 
     batch_sample_mode: ''
     use_reptile: False 
+    use_anil:  False 
     reptile_eps: [1,0] # [initial, final]
     reptile_k: 5 
     normalize_reward: ''  
     grad_accum: 1 
     augment_batch: 0
     augment_reward: False 
-    use_pearl: False 
+    use_pearl: False  
     pearl_window_size: 10
     pearl_context_size: 3
     pearl_onpolicy_context: True  #if false, also sample demonstration transitions as context 

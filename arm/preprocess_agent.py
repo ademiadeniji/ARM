@@ -1,5 +1,7 @@
 from typing import List
 
+from numpy import True_
+
 import torch
 
 from yarr.agents.agent import Agent, Summary, ActResult, \
@@ -45,11 +47,10 @@ class PreprocessAgent(Agent):
             if isinstance(replay_sample[k], torch.Tensor):
                 replay_sample[k] = replay_sample[k].to(self._device)
         self._replay_sample = {k: rearrange(v, 'n k ... -> (n k) ...') for k, v in replay_sample.items()} # the stack agent does another reshape, here is just for logging purpose 
-        pose_dict = self._pose_agent.update(step, replay_sample)
-         
+        pose_dict = self._pose_agent.update(step, replay_sample) 
         return pose_dict
     
-    def update_reptile_inner(self, step: int, replay_sample: dict, k_step: int) -> dict:
+    def update_reptile_inner(self, step: int, replay_sample: dict, k_step: int, anil: bool = False) -> dict:
         # Samples are still shape (N, K, ...), BUT iterate over N dimension before taking parameter average
         for k, v in replay_sample.items():
             if 'rgb' in k:
@@ -58,10 +59,21 @@ class PreprocessAgent(Agent):
                 replay_sample[k] = replay_sample[k].to(self._device)
         self._replay_sample = {k: rearrange(v, 'n k ... -> (n k) ...') for k, v in replay_sample.items()} # the stack agent does another reshape, here is just for logging purpose 
         
-        return self._pose_agent.update_reptile(step, replay_sample, k_step)
+        return self._pose_agent.update_reptile(step, replay_sample, k_step, anil=anil)
 
-    def update_reptile_outer(self, frac_done: float):
-        return self._pose_agent.update_reptile_outer(frac_done)
+    def update_reptile_outer(self, frac_done: float, anil: bool = False):
+        return self._pose_agent.update_reptile_outer(frac_done, anil)
+
+    def update_anil_outer(self, step: int, replay_sample: dict):
+        for k, v in replay_sample.items():
+            if 'rgb' in k:
+                replay_sample[k] = self._norm_rgb_(v) 
+            if isinstance(replay_sample[k], torch.Tensor):
+                replay_sample[k] = replay_sample[k].to(self._device)
+        self._replay_sample = {k: rearrange(v, 'n k ... -> (n k) ...') for k, v in replay_sample.items()} # the stack agent does another reshape, here is just for logging purpose 
+        pose_dict = self._pose_agent.update(step, replay_sample, first_layer_only=True)
+        return pose_dict
+
 
     def update_context_via_qagent(self, step: int, replay_sample: dict, classify: bool, emb_weight: float):
         for k, v in replay_sample.items():

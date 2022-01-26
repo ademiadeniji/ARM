@@ -171,7 +171,7 @@ def _add_keypoints_to_replay(
         others.update(obs_dict)
          
         timeout = False
-        replay.add(action, reward, terminal, timeout, **others)
+        replay.add(action, reward, terminal, timeout, **others) 
         obs = obs_tp1  # Set the next obs
 
     # Final step

@@ -41,7 +41,7 @@ class QAttentionStackAgent(Agent):
         for qa in self._qattention_agents:
             qa.build(training, device)
 
-    def update(self, step: int, replay_sample: dict) -> dict:
+    def update(self, step: int, replay_sample: dict, first_layer_only: bool = False, last_layer_only: bool = False) -> dict:
         # priorities = 0
         # for qa in self._qattention_agents:
         #     update_dict = qa.update(step, replay_sample)
@@ -55,8 +55,13 @@ class QAttentionStackAgent(Agent):
         replay_sample = {k: rearrange(v, 'b k ... -> (b k) ... ') for k, v in replay_sample.items()}
 
         priorities = 0
-        task_priorities, var_priorities = 0, 0 
-        for qa in self._qattention_agents:
+        task_priorities, var_priorities = 0, 0
+        agents = self._qattention_agents
+        if first_layer_only: 
+            agents = agents[:1]
+        if last_layer_only:
+            agents = agents[-1:]
+        for qa in agents:   
             #print('\n Updating qa layer: ', qa._layer)
             update_dict = qa.update(step, replay_sample)
             priorities += update_dict['priority']
@@ -135,16 +140,18 @@ class QAttentionStackAgent(Agent):
         for qa in self._qattention_agents:
             qa.save_weights(savedir)
     
-    def update_reptile(self, step: int, replay_sample: dict, k_step: int) -> dict:
+    def update_reptile(self, step: int, replay_sample: dict, k_step: int, anil: bool = False) -> dict:
         # saves a copy of params before k_steps and soft update after all k_steps are done 
         # takes in samples (N,K,...) and do separate N updates 
+        agents = self._qattention_agents[1:] if anil else self._qattention_agents
         if k_step == 0:
-            for qa in self._qattention_agents:
+            for qa in agents:
                 qa.reptile_save_weights()
-        return self.update(step, replay_sample)
+        return self.update(step, replay_sample, last_layer_only=anil)
     
-    def update_reptile_outer(self, frac_done: float):
-        for qa in self._qattention_agents:
+    def update_reptile_outer(self, frac_done: float, anil: bool = False):
+        agents = self._qattention_agents[1:] if anil else self._qattention_agents
+        for qa in agents:
             qa.reptile_soft_update(frac_done)
         return 
 
@@ -171,7 +178,7 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
             device = torch.device('cpu')
         self._device = device 
     
-    def update(self, step: int, replay_sample: dict) -> dict:
+    def update(self, step: int, replay_sample: dict, first_layer_only: bool = False, last_layer_only: bool = False) -> dict:
         """NOTE(mandi): 
             - let context agent act here once, so it optionally first does a pass to update hinge loss 
             - we may need to 'pass down' the encoded context embedding from 
@@ -193,7 +200,12 @@ class QAttentionStackContextAgent(QAttentionStackAgent):
 
         priorities = 0
         task_priorities, var_priorities = 0, 0 
-        for qa in self._qattention_agents: 
+        agents = self._qattention_agents
+        if first_layer_only: 
+            agents = agents[:1]
+        if last_layer_only:
+            agents = agents[-1:]
+        for qa in agents: 
             update_dict = qa.update(step, replay_sample)
             if self._pass_down_context:
                 assert 'prev_layer_encoded_context' in update_dict.keys(), 'Need previous layer to pass down encoded context'
