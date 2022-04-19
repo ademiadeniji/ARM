@@ -85,7 +85,7 @@ if __name__ == '__main__':
     for i, p in enumerate(net.parameters()):
         # print(p.shape)
         if len(p) > 0:
-            p = repeat(p.data, '... -> (...) 1').to(device)
+            p = repeat(p.data, '... -> (...) s1').to(device)
              
             sim += cuda_cka.linear_CKA(p, p)
             c += 1

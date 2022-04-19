@@ -1,3 +1,9 @@
+encoder.pkl
+irl/clip-tuned/
+irl/CLIP_ARM
+irl/outputs
+irl/log
+irl/*.png
 __pycache__
 venv
 .idea

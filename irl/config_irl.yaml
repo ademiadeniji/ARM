@@ -1,23 +1,28 @@
 # tasks: ['pick_up_cup'] # ['pick_up_cup', 'pick_and_lift', 'push_button', 'reach_target', 'take_lid_off_saucepan']
 10_tasks:  [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,push_button,reach_target,lamp_on,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand,stack_wine]
 run_name: burn 
-mt_only: False # True for no context, MT policy 
+mt_only:  True # True for no context, MT policy 
 log_path: ??? 
 tasks_name: ???
 
-defaults:
-    - method: C2FARM
-    - encoder: SlowRes
-    - tasks:  MT10_1cam
+method: ??? 
+tasks:
+  all_tasks: [push_button]
+  cameras: [front]
+  num_vars: -1 
+  heldout: ''
+  demo_length: 1 
+  train_steps: 10000
+  log_freq:   100 
 
 rlbench: 
-    tasks: ${tasks.all_tasks}
+    tasks: ${tasks}
     all_tasks: ???       # [task_A, task_B,...]
     use_variations: ??? # [ [task_A_0], [task_B_0], ...
     all_variations: ???  # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
     id_to_tasks: ??? 
-    demos: 3
-    demo_path: /shared/mandi/all_rlbench_data
+    demos: 0
+    demo_path: /home/mandi/all_rlbench_data
     episode_length: 10
     cameras: ${tasks.cameras}
     camera_resolution: [128, 128]
@@ -27,16 +32,16 @@ rlbench:
     num_vars: ${tasks.num_vars}
 
 replay:
-    batch_size: 10 # total buff size, no task-aggregate anymore 
+    batch_size: 60 # total buff size, no task-aggregate anymore 
     total_batch_size: 10000
     timesteps: 1
     prioritisation: True
     use_disk: False
     path: '/tmp/arm_sanity/replay'  # Only used when use_disk is True.
-    share_across_tasks: False  
-    replay_size: 1000000 # total size 
+    share_across_tasks: True
+    replay_size: 100000 # total size 
     update_buffer_prio: True 
-    buffers_per_batch: 6
+    buffers_per_batch: 1
     num_tasks_per_batch: -1
     num_vars_per_batch: -1 
     # ? make sure the multi-var tasks get multiple vars
@@ -46,8 +51,8 @@ framework:
     save_freq: 100
     train_envs: 1
     eval_envs: 2
-    env_runner_gpu: 2
-    replay_ratio: 6
+    env_runner_gpu: 1
+    replay_ratio: 60
     transitions_before_train: 100
     tensorboard_logging: True
     csv_logging: False
@@ -55,7 +60,7 @@ framework:
     training_iterations: ${tasks.train_steps}
     eval_episodes: 2000
     gpu: 0
-    logdir: '/home/mandi/ARM/log/'
+    logdir: '/home/mandi/ARM/irl/log/'
     seeds: 1
     resume: ${resume}
     resume_path: ${resume_path}
@@ -68,7 +73,20 @@ framework:
     num_log_episodes: 10  # NOTE: also use this to count ckpt eval episodes!!
     ckpt_eval: False 
     
-
+rew:
+  data_path: '/home/mandi/ARM/irl/CLIP_ARM/'
+  model_path: /home/mandi/ARM/irl/clip-tuned/
+  task_name: push_button
+  model: 'demo_only_256x512'
+  step: 100
+  prompts: ["robot gripper tip touch square button"]
+  save_data: False 
+  overwrite: True
+  save_itr: 0 
+  use_aug: False
+  predict_logits: False
+  scale_logits: False
+  shift_t: False
 
 resume: False
 resume_path: '/home/mandi/ARM/log/' # or: /shared/mandi/arm_log 
@@ -103,7 +121,7 @@ dev:
     use_film: False 
     qnet_2_layer_context: False 
     classify: False
-    emb_weight: ${contexts.emb_weight} 
+    emb_weight: 0
     freeze_after_steps: -1 
     replay_update_freq: 1 # skip rep. loss during replay update! 
     discrete: False  # dVAE context agent
@@ -116,108 +134,18 @@ dev:
     reptile_k: 5 
     normalize_reward: ''  
     grad_accum: 1 
-    augment_batch: 0
-    augment_reward: False 
-    use_pearl: False  
-    pearl_window_size: 10
-    pearl_context_size: 3
-    pearl_onpolicy_context: True  #if false, also sample demonstration transitions as context 
-    clip_reward: "robot gripper tip touch square button"
-    clip_mlp: '/home/mandi/ARM/clip-tuned/2mlps-256x512/300.pt' 
-    clip_save: False 
+    augment_batch: 0 
     # '/home/mandi/ARM/clip-tuned/1mlp-256/300.pt' , '/home/mandi/ARM/clip-tuned/2mlps-256x512-360episodes/1750.pt'
     # diff objective: 2mlps-256x512step0-TrajImprove-iteration0/200.pt
     # next up no scale: /home/mandi/ARM/clip-tuned/2mlps-256x512-NoScale-NoExpertloss-TrajImprove-iteration4/2150.pt 
 
-pearl_encoder:
-  encode_next_obs: False 
-  conv_kernel_sizes: [3,3]
-  conv_out_channels: [32,32]
-  strides: [2,2]
-  action_size: 8 
-  norm: None 
-  activation: 'lrelu'
-  mlp_hidden_sizes: [512]
-  output_size: 16
- 
-contexts:
-  num_update_itrs: 5
-  val_freq:   -1
-  update_freq: 100000  # as compared to agent update
-  pass_down_context: True 
-  pretrain_context_steps: 0 
-  pretrain_replay_steps: 0 # use replay batch to update context
-  emb_weight: 1.0
-  loss_mode: 'hinge'
-  agent:
-    with_action_context: False
-    is_train: True
-    embedding_size: ${encoder.MODEL.OUT_DIM}
-    query_ratio: 0.3 # takes this much out of the total K samples 
-    margin:     0.5
-    emb_lambda: 1.0
-    save_context: False 
-    loss_mode:  ${contexts.loss_mode}
-    prod_of_gaus_factors_over_batch: False # for PEARL 
-    encoder_cfg: ${encoder}
-    replay_update: True
-    single_embedding_replay: True # if False, draw equal amount of embeddings from context 
-    tau: 0.01
-    param_update_freq: 10
-    hidden_dim: -1
-    use_target_embedder: False 
-  sampler:
-    batch_dim:             ${replay.buffers_per_batch}   # dimension 'B' -> this has to match num of buffers
-    k_dim:                 1      # dimension 'K'     -> this doesnt 
-    drop_last:             True 
-    sample_mode:           'variation' # or 'variation'
-    val_batch_dim:         10          # actually let's fix this for all sweeping runs to get a fair comparision 
-    val_k_dim:             2           # dimension 'K', has to limit to 2 due to datasplit
-  discrete_agent:
-    loss_mode:  ${contexts.loss_mode}
-    single_embedding_replay: True
-    replay_update: False # not for dVAE
-    is_train: True
-    one_hot:  True 
-    latent_dim: 1 # if 3: use the conv_out 
-    encoder_cfg: ${encoder}
-    query_ratio: 0.3 # takes this much out of the total K samples 
-    margin:     0.5
-    anneal_schedule: 5e-4
-    temp_update_freq: 100
-    discrete_before_hinge: False 
-    dev_cfg: ${cdev}
-
-cdev:
-  use_conv: False 
-  conv_kernel: [3,1,1]
-  conv_out: 8196 # 4096?
-  stride: 1 
-  pass_3d: ${dev.ctxt_conv3d}
-
-
-dataset:
-  image_size:                 [128, 128]
-  root_dir:                   ${rlbench.demo_path}
-  num_variations_per_task:    -1 # just loads all vars
-  num_episodes_per_variation: 20 # up to 20
-  num_steps_per_episode:      ${tasks.demo_length}  
-  exclude_tasks:              []
-  include_tasks:              [] # set to [] or other options so it loads in more tasks than the trained one
-  data_augs:   
-    grayscale:        0
-    strong_jitter:    0 
-    weak_crop_scale:  [0.7, 0.9]
-    weak_crop_ratio:  [0.9, 1]
-  split:              [0.9, 0.1] # train/val split
-  defer_transforms:   False 
 
 
 wandb:
     project: 'ContextARM'
     entity:    mannndi
     job_type: 'launch'
-    group:    'meta_context'
+    group:    'irl'
 hydra:
     run:
         dir: ${framework.logdir}/ #${rlbench.task}/${method.name}

@@ -1,0 +1,26 @@
+data_path: /home/mandi/ARM/irl/CLIP_ARM
+model_path: /home/mandi/ARM/irl/clip-tuned
+run_name: 'burn'
+load_dir: ''
+load_step: 0
+
+task: push_button 
+prompts: ["robot gripper tip touch square button"]
+scale_logits: False
+device: 'cuda:0'
+
+itrs: 5_000
+log_freq: 50
+lr: 1e-5
+log_wb: True
+
+
+dataset:
+  idxs: [0]
+  levels: ['fail', 'expert']
+  bsize: 12
+  ntrajs: 50
+  nframes: 5
+  resize: 240
+  flip_prob: 0.5
+  sample_expert_prob: 1
