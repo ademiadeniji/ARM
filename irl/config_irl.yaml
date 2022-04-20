@@ -91,7 +91,7 @@ rew:
   shift_t: True
 
 resume: False
-resume_path: '/home/mandi/ARM/log/' # or: /shared/mandi/arm_log 
+resume_path: '/home/mandi/ARM/log/' # or: /shared/mandi/irl_arm_log 
 resume_run: ''
 resume_step: 24300
 resume_freeze: []

@@ -55,6 +55,9 @@ class CustomRolloutGenerator(object):
         self._rew_cfg = rew_cfg
  
         self._replays  = replay_buffers
+        if self._rew_cfg.task_reward:
+            print('Not loading reward model!')
+            return 
         print('Loading CLIP checkpoint!')
         self._clip_model, clip_process = clip.load('ViT-L/14', device='cuda:1') 
         model_name = os.path.join(self._rew_cfg.model_path, self._rew_cfg.model, f'{rew_cfg.step}.pt')

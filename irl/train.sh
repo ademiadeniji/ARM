@@ -11,6 +11,16 @@ RUN=TunedItr0-FailOnly
 python launch.py rew.scale_logits=True run_name=$RUN \
     rew.model=$MODEL rew.step=$STEP rew.save_data=False rew.use_aug=True
 
+# launch but finetune
+RUN=ResumeTaskReward
+python launch.py rew.scale_logits=True run_name=$RUN \
+    rew.save_data=False rew.use_aug=True rew.save_data=False \
+    resume=True resume_path=/shared/mandi/irl_arm_log/ \
+    resume_run=push_button-18var/TunedItr0-SmoothedModel-Replay_B60x1/seed0 resume_step=4000 \
+    framework.wandb=False 
+
+
+
 
 # irl train:
 python clip_finetune.py dataset.levels=[fail,success,expert]  dataset.sample_expert_prob=0.5 \
