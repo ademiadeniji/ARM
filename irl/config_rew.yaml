@@ -9,18 +9,24 @@ prompts: ["robot gripper tip touch square button"]
 scale_logits: False
 device: 'cuda:0'
 
-itrs: 5_000
+itrs: 1000
 log_freq: 50
-lr: 1e-5
+lr: 3e-4
 log_wb: True
 
 
 dataset:
   idxs: [0]
-  levels: ['fail', 'expert']
+  levels: ['fail', 'success', 'expert']
+  val_split: 0.05
+  val_steps: 10
   bsize: 12
   ntrajs: 50
-  nframes: 5
+  nframes: 3
   resize: 240
   flip_prob: 0.5
-  sample_expert_prob: 1
+  sample_expert_prob: 0.3
+  sample_success_prob: 0.5
+  fail_only: True # doesn't distinguish between expert and success! 
+  
+

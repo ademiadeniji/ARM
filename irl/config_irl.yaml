@@ -52,7 +52,7 @@ framework:
     train_envs: 1
     eval_envs: 2
     env_runner_gpu: 1
-    replay_ratio: 60
+    replay_ratio: 30
     transitions_before_train: 100
     tensorboard_logging: True
     csv_logging: False
@@ -84,9 +84,10 @@ rew:
   overwrite: True
   save_itr: 0 
   use_aug: False
+  aug_avg: 1
   predict_logits: False
   scale_logits: False
-  shift_t: False
+  shift_t: True
 
 resume: False
 resume_path: '/home/mandi/ARM/log/' # or: /shared/mandi/arm_log 

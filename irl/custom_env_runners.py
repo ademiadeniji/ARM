@@ -302,10 +302,13 @@ class _EnvRunner(object):
 
             with self.write_lock: 
                 # logging.warning(f'proc {name}, idx {proc_idx} adding to stored transitions')
-                for transition in episode_rollout:
-                    self.stored_transitions.append((name, transition, eval))
                 if self._rollout_generator._rew_cfg.save_data: 
                     self.clip_episodes.append(episode_rollout)
+                for transition in episode_rollout:
+                    if 'task_success' in transition.info.keys():
+                        transition.info.pop('task_success')
+                    self.stored_transitions.append((name, transition, eval))
+                
                 # logging.warning(f'proc {name}, idx {proc_idx} finished adding to stored transitions') 
         env.shutdown()
 
@@ -363,6 +366,9 @@ class _EnvRunner(object):
                                 all_agent_summaries.append(s)
                                 # logging.warning(f'proc {name}, idx {proc_idx} finished writing agent summaries')
                             assert replay_transition.info[CHECKPT] == ckpt, 'Checkpoint mismatch between transition in rollout and agent loaded point'
+                            if 'task_success' in replay_transition.info.keys():
+                                replay_transition.info.pop('task_success')
+
                             episode_rollout.append(replay_transition)
                             # print(replay_transition.info, env._task._variation_number )
                     except StopIteration as e:
@@ -559,9 +565,9 @@ class EnvRunner(object):
                 os.makedirs(f'{self.clip_save_path}/success', exist_ok=True)
                 os.makedirs(f'{self.clip_save_path}/fail', exist_ok=True) 
                 for episode in self._internal_env_runner.clip_episodes:
-                    folder = 'success' if episode[-1].reward == 1000 else 'fail'
+                    folder = 'success' if episode[-1].info.get('task_success', False) else 'fail'
                     eps_idx = len(glob(f'{self.clip_save_path}/{folder}/episode*')) 
-                    if eps_idx <= 500:
+                    if eps_idx <= 5000:
                         new_path = f'{self.clip_save_path}/{folder}/episode{eps_idx}'
                         if eps_idx % 50 == 0:
                             print('Saving episode:', new_path)

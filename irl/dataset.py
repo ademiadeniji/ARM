@@ -55,7 +55,9 @@ class ReplayDataset(IterableDataset):
         self.sample_expert_prob = cfg.dataset.sample_expert_prob
         if len(self.levels) == 1 and self.levels[0] == 'expert':
             self.sample_expert_prob = 1
-
+        self.sample_success_prob = cfg.dataset.sample_success_prob
+        if 'success' not in self.levels:
+            self.sample_success_prob = 0 
         self.aug_process = Compose([
             Resize(int(cfg.dataset.resize), interpolation=BICUBIC),
             RandomResizedCrop(224, scale=(0.7, 1.0)),
@@ -64,6 +66,7 @@ class ReplayDataset(IterableDataset):
             ToTensor(),
             Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
         ])
+        self.cfg = cfg.dataset
 
     def _generator(self):
         while True:
@@ -76,16 +79,19 @@ class ReplayDataset(IterableDataset):
             return self.sample_expert_batch()
         
         batch = []
-        random.shuffle(self.level_idxs)
-        idxs = sorted(self.level_idxs[:2]) 
+        if self.cfg.fail_only:
+            idxs = [0] + np.random.choice([i for i in self.level_idxs if i != 0], size=1).tolist()
+        else:
+            random.shuffle(self.level_idxs)
+            idxs = sorted(self.level_idxs[:2]) 
         for level_idx in idxs:
             level_data = []
             data = self.all_data[self.levels[level_idx]]
-            traj_idxs = np.random.choice(len(data), size=self.num_trajs, replace=False)
+            traj_idxs = np.random.choice(len(data), size=self.num_trajs, replace=(len(data) < self.num_trajs))
 
             for traj_idx in traj_idxs:
                 traj = data[traj_idx]
-                frame_idxs = sorted(np.random.choice(len(traj), size=self.num_frames_per_traj, replace=False))
+                frame_idxs = sorted(np.random.choice(len(traj), size=self.num_frames_per_traj, replace=(len(traj) < self.num_frames_per_traj)))
                 frames = [self.aug_process(
                     Image.fromarray(
                         np.uint8(traj[i]) 
@@ -99,25 +105,40 @@ class ReplayDataset(IterableDataset):
 
     def sample_expert_batch(self):
         """ split the expert level into earlier v.s. later in timestep """
-        data = self.all_data['expert']
-        traj_idxs = np.random.choice(len(data), size=self.num_trajs, replace=False)
+        level = 'success' if random.random() < self.sample_success_prob else 'expert'
+        data = self.all_data[level]
+        data = [d for d in data if len(d) >= self.num_frames_per_traj * 2]
+        traj_idxs = np.random.choice(len(data), size=self.num_trajs, replace=(len(data) < self.num_trajs))
         low_batch, high_batch = [], [] 
         for traj_idx in traj_idxs:
             traj = data[traj_idx]
-            assert len(traj) > self.num_frames_per_traj * 2
-            low_idx = np.random.choice(len(traj) - self.num_frames_per_traj * 2, size=self.num_frames_per_traj, replace=False)
+            assert len(traj) >= self.num_frames_per_traj * 2
+            low_idx = np.random.choice(
+                int(len(traj)/2) , 
+                size=self.num_frames_per_traj, 
+                replace=(int(len(traj)/2) < self.num_frames_per_traj)
+                )
             low_idx = sorted(low_idx)
             assert low_idx[-1] == max(low_idx)
             high_idx = np.random.choice(
-                range(low_idx[-1] + 1, len(traj)), size=self.num_frames_per_traj, replace=False)
+                range(low_idx[-1] + 1, len(traj)), 
+                size=self.num_frames_per_traj, 
+                replace=(len(traj) - low_idx[-1] - 1 < self.num_frames_per_traj)
+                )
             high_idx = sorted(high_idx)
 
             for frame_idxs, batch in zip([low_idx, high_idx], [low_batch, high_batch]):
-                frames = [self.aug_process(traj[i]) for i in frame_idxs] 
+                if level == 'success':
+                    frames = [self.aug_process(
+                        Image.fromarray( np.uint8(traj[i]) )) for i in frame_idxs] 
+                else:
+                    frames = [self.aug_process(traj[i]) for i in frame_idxs] 
                 batch.append(torch.stack(frames))
         low_batch = torch.stack(low_batch, dim=0)
         high_batch = torch.stack(high_batch, dim=0)
         return torch.stack([low_batch, high_batch])
+ 
+
 
 
 

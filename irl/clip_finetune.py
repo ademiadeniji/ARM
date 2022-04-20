@@ -1,4 +1,5 @@
 from email.policy import default
+from threading import activeCount
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -68,18 +69,27 @@ def load_dataset(cfg):
                             obs = Image.fromarray(np.uint8(final_obs))
                             episode.append(obs)
 
-                all_data[level].append(episode)
-    for k, trajs in all_data.items():
-        print("Data level: {}, loaded {} episodes, max/min traj length: {}/{}".format(
-            k, len(trajs), max([len(t) for t in trajs]), min([len(t) for t in trajs])))
+                all_data[level].append(episode) 
+
     if 'expert' in cfg.dataset.levels:
         all_data['expert'] = load_expert_trajs(cfg.task)
-    return ReplayDataset(cfg, all_data)
+
+    val_data = dict()
+    train_data = dict()
+    for k, trajs in all_data.items():
+        num_val = int(cfg.dataset.val_split * len(trajs))
+        print("Data level: {}, loaded {} episodes, using {} for validation, max/min traj length: {}/{}".format(
+            k, len(trajs), num_val,
+            max([len(t) for t in trajs]), min([len(t) for t in trajs])
+            ))
+        train_data[k] = trajs[:num_val]
+        val_data[k] = trajs[num_val:]
+    return ReplayDataset(cfg, train_data), ReplayDataset(cfg, val_data)
 
 @hydra.main(config_name='config_rew', config_path='/home/mandi/ARM/irl')
 def main(cfg: DictConfig) -> None: 
     
-    train_dataset = load_dataset(cfg)  
+    train_dataset, val_dataset = load_dataset(cfg)  
 
     # load CLIP and MLP models:
     device = cfg.device
@@ -99,20 +109,8 @@ def main(cfg: DictConfig) -> None:
     print('Fine-tuning parameter count:', sum(p.numel() for p in mlp.parameters() if p.requires_grad))
     optim = Adam(mlp.parameters(), lr=cfg.lr)
     os.makedirs(f'{cfg.model_path}/{cfg.run_name}', exist_ok=('burn' in cfg.run_name))
-    
-    if cfg.log_wb:
-        run = wandb.init(project="ContextARM", name=cfg.run_name)
-        cfg_dict = {
-            k: v for k, v in cfg.items() if not 'dataset' in k
-        }
-        for key in ['dataset']:
-            for sub_key in cfg[key].keys():
-                cfg_dict[key+'/'+sub_key] = cfg[key][sub_key]
-        run.config.update(cfg_dict)
 
-    train_iter = iter(train_dataset)
-    for step in range(cfg.itrs):
-        batch = next(train_iter).to(device) # (num_levels=2, num_trajs, num_frames, 3, 128, 128
+    def compute_loss(batch):
         n, b, f, c, h, w = batch.shape
         assert c == 3 # channel dim 
         low_logits = mlp(
@@ -134,28 +132,56 @@ def main(cfg: DictConfig) -> None:
 
         loss = - torch.log( (higher / (higher + lower + 1e-8)) + 1e-8 )
         loss = torch.mean(loss)
+        acc = torch.sum(low_logits < high_logits) / b
+        return loss, acc, low_logits, high_logits
+
+    
+    if cfg.log_wb:
+        run = wandb.init(project="ContextARM", name=cfg.run_name)
+        cfg_dict = {
+            k: v for k, v in cfg.items() if not 'dataset' in k
+        }
+        for key in ['dataset']:
+            for sub_key in cfg[key].keys():
+                cfg_dict[key+'/'+sub_key] = cfg[key][sub_key]
+        run.config.update(cfg_dict)
+
+    train_iter, val_iter = iter(train_dataset), iter(val_dataset)
+    for step in range(cfg.itrs):
+        batch = next(train_iter).to(device) # (num_levels=2, num_trajs, num_frames, 3, 128, 128
+        loss, acc, low_logits, high_logits = compute_loss(batch)
         if torch.isnan(loss):
             print('Warning! got nan loss at step', step) 
             continue
-        acc = torch.sum(low_logits < high_logits) / b
-
         optim.zero_grad()
         loss.backward()
         optim.step()
-        if step % cfg.log_freq == 0:
-            
+        if step % cfg.log_freq == 0 or step == cfg.itrs - 1:
+            log_step = step + 1 if step == cfg.itrs - 1 else step
             tolog = {'loss': loss.item(),
                 'acc': acc.item(),
-                'Train Step': step,
+                'Train Step': log_step,
                 'logits min': low_logits.min().item(), 
                 'logits max': high_logits.max().item(),
                 'logits mean': high_logits.mean().item(),
                 }
-           
+            val_losses, val_accs, val_lows, val_hights = [], [], [], []
+            for _ in range(cfg.dataset.val_steps):
+                with torch.no_grad():
+                    val_batch = next(val_iter).to(device)
+                    val_loss, val_acc, val_low_logits, val_high_logits = compute_loss(val_batch)
+                    val_losses.append(val_loss.item())
+                    val_accs.append(val_acc.item())
+                    val_lows.append(val_low_logits.min().item())
+                    val_hights.append(val_high_logits.max().item())
+            for key, val in zip(['val/loss', 'val/acc', 'val/logits min', 'val/logits max', 'val/logits mean'], \
+                [val_losses, val_accs, val_lows, val_hights]):
+                tolog[key] = np.mean(val)
+
             if cfg.log_wb:
                 wandb.log(tolog)
             print(tolog)
-            torch.save(mlp.state_dict(), f'{cfg.model_path}/{cfg.run_name}/{step}.pt')
+            torch.save(mlp.state_dict(), f'{cfg.model_path}/{cfg.run_name}/{log_step}.pt')
  
 
 if __name__ == "__main__":

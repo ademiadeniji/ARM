@@ -178,21 +178,24 @@ class CustomRolloutGenerator(object):
                 break 
 
         episode_success = episode_trans[-1].reward > 0 
+        episode_trans[-1].info['task_success'] = episode_success
         if not eval:
+            use_scale = self._rew_cfg.scale_logits
             obs = [ep.observation['front_rgb'] for ep in episode_trans]
             if self._rew_cfg.shift_t:
                 # label with next obs's rew!
                 obs = obs[1:] + [episode_trans[-1].final_observation['front_rgb']]
-            imgs = torch.stack([
-                self._aug_process(Image.fromarray(np.uint8(ob.transpose((1,2,0))
-                        )).convert('RGB'))
-                for ob in obs]).to('cuda:1')
-            
-            # logits_per_image, _ = self._clip_model(imgs, self._text)
-            # logits = logits_per_image.detach().cpu().numpy()
-            use_scale = self._rew_cfg.scale_logits
-            
-            logits = self._reward_model(imgs, self._text, scale_logits=use_scale).detach().cpu().numpy()
+            obs = [Image.fromarray(np.uint8(ob.transpose((1,2,0)))).convert('RGB') for ob in obs]
+            if self._rew_cfg.use_aug and self._rew_cfg.aug_avg > 1:
+                itrs = int(self._rew_cfg.aug_avg)
+                logits = 0
+                for _ in range(itrs):
+                    imgs = torch.stack([self._aug_process(ob) for ob in obs]).to('cuda:1')
+                    logits += self._reward_model(imgs, self._text, scale_logits=use_scale).detach().cpu().numpy()
+                logits /= itrs
+            else:
+                imgs = torch.stack([self._aug_process(ob) for ob in obs]).to('cuda:1') 
+                logits = self._reward_model(imgs, self._text, scale_logits=use_scale).detach().cpu().numpy()
 
             # if self._reward_model.predict_logits:
             #     logits *= 50 # reward is ~[-1.3*50, 1.8*50]
