@@ -179,7 +179,7 @@ class CustomRolloutGenerator(object):
 
         episode_success = episode_trans[-1].reward > 0 
         episode_trans[-1].info['task_success'] = episode_success
-        if not eval:
+        if not eval and (not self._rew_cfg.task_reward):
             use_scale = self._rew_cfg.scale_logits
             obs = [ep.observation['front_rgb'] for ep in episode_trans]
             if self._rew_cfg.shift_t:

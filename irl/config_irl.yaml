@@ -22,7 +22,7 @@ rlbench:
     all_variations: ???  # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
     id_to_tasks: ??? 
     demos: 0
-    demo_path: /home/mandi/all_rlbench_data
+    demo_path: /homed
     episode_length: 10
     cameras: ${tasks.cameras}
     camera_resolution: [128, 128]
@@ -74,6 +74,7 @@ framework:
     ckpt_eval: False 
     
 rew:
+  task_reward: False
   data_path: '/home/mandi/ARM/irl/CLIP_ARM/'
   model_path: /home/mandi/ARM/irl/clip-tuned/
   task_name: push_button
