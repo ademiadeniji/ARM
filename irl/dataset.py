@@ -44,6 +44,7 @@ def _convert_image_to_rgb(image):
     return image.convert("RGB")
 
 class ReplayDataset(IterableDataset):
+    """ New(0423): new multi-task version """
     def __init__(self, cfg, all_data: defaultdict) -> None:
         super(ReplayDataset).__init__()
         self.all_data = all_data
@@ -67,17 +68,32 @@ class ReplayDataset(IterableDataset):
             Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
         ])
         self.cfg = cfg.dataset
+        self.concat_batch = cfg.dataset.concat_batch
+        if self.concat_batch:
+            self.num_trajs = int(self.num_trajs / 2)
+            print('Concatenating batch, half the num of trajs into {self.num_trajs}')
+            
 
     def _generator(self):
         while True:
             yield self.sample_batch()
 
+    def sample_concat_batch(self):
+        """ Sample both the temporal and fail/success trajs """
+        temporal_batch = self.sample_success_batch() # Either expert OR success!
+        binary_batch = self.sample_binary_batch()
+        return torch.cat([temporal_batch, binary_batch], dim=1)
+
     def sample_batch(self):
         """Return batch (num_levels=2, num_trajs, num_frames, 3, 128, 128)"""
-        
+        if self.concat_batch:
+            return self.sample_concat_batch()
         if random.random() < self.sample_expert_prob:
-            return self.sample_expert_batch()
+            return self.sample_success_batch()
+        else:
+            return self.sample_binary_batch()
         
+    def sample_binary_batch(self):
         batch = []
         if self.cfg.fail_only:
             idxs = [0] + np.random.choice([i for i in self.level_idxs if i != 0], size=1).tolist()
@@ -103,7 +119,7 @@ class ReplayDataset(IterableDataset):
 
         return torch.stack(batch)
 
-    def sample_expert_batch(self):
+    def sample_success_batch(self):
         """ split the expert level into earlier v.s. later in timestep """
         level = 'success' if random.random() < self.sample_success_prob else 'expert'
         data = self.all_data[level]
@@ -137,10 +153,7 @@ class ReplayDataset(IterableDataset):
         low_batch = torch.stack(low_batch, dim=0)
         high_batch = torch.stack(high_batch, dim=0)
         return torch.stack([low_batch, high_batch])
- 
-
-
-
 
     def __iter__(self):
         return iter(self._generator())
+

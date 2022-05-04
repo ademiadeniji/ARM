@@ -88,7 +88,11 @@ def load_dataset(cfg):
 
 @hydra.main(config_name='config_rew', config_path='/home/mandi/ARM/irl')
 def main(cfg: DictConfig) -> None: 
-    
+    layers = "x".join([str(l) for l in cfg.model.hidden_layers])
+    if cfg.model.predict_logit:
+        layers += "x1"
+    cfg.run_name += f"-{cfg.dataset.nframes}x{cfg.dataset.ntrajs}Batch-{layers}MLP"
+    print('Run name: {}'.format(cfg.run_name))
     train_dataset, val_dataset = load_dataset(cfg)  
 
     # load CLIP and MLP models:
@@ -99,7 +103,7 @@ def main(cfg: DictConfig) -> None:
     text = clip.tokenize(prompts).to(device)
     print('Using prompt', prompts)
     
-    mlp = RewardMLP(clip_model=clip_model).to(device)
+    mlp = RewardMLP(clip_model=clip_model, **cfg.model).to(device)
 
     if len(cfg.load_dir) > 0:
         print('Loading model from {}'.format(cfg.load_dir))
@@ -109,6 +113,7 @@ def main(cfg: DictConfig) -> None:
     print('Fine-tuning parameter count:', sum(p.numel() for p in mlp.parameters() if p.requires_grad))
     optim = Adam(mlp.parameters(), lr=cfg.lr)
     os.makedirs(f'{cfg.model_path}/{cfg.run_name}', exist_ok=('burn' in cfg.run_name))
+    OmegaConf.save(cfg, f'{cfg.model_path}/{cfg.run_name}/config.yaml')
 
     def compute_loss(batch):
         n, b, f, c, h, w = batch.shape
@@ -116,7 +121,6 @@ def main(cfg: DictConfig) -> None:
         low_logits = mlp(
             rearrange(batch[0], 'b f ... -> (b f) ... '),
             text, 
-            scale_logits=cfg.scale_logits
             )
         low_logits = rearrange(low_logits,'(b f) ... -> b f ...',  b=b, f=f)
         low_logits = torch.sum(low_logits, dim=1)
@@ -124,8 +128,8 @@ def main(cfg: DictConfig) -> None:
 
         high_logits= mlp(
             rearrange(batch[1], 'b f ... -> (b f) ... '),
-            text,
-            scale_logits=cfg.scale_logits)
+            text, 
+            )
         high_logits = rearrange(high_logits, '(b f) ... -> b f ...', b=b, f=f)
         high_logits = torch.sum(high_logits, dim=1)
         higher = torch.exp(high_logits)

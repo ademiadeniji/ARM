@@ -421,6 +421,7 @@ class EnvRunner(object):
                  max_fails: int = 5,
                  device_list: Union[List[int], None] = None,
                  share_buffer_across_tasks: bool = True, 
+                 share_buffer_across_vars: bool = True,  
                  task_var_to_replay_idx: dict = {},
                  eval_only: bool = False, 
                  iter_eval: bool = False, 
@@ -462,8 +463,7 @@ class EnvRunner(object):
         self.buffer_add_counts = Manager().list()
         self.log_freq = log_freq
         self.target_replay_ratio = target_replay_ratio
-        self._device_list = device_list 
-        self._share_buffer_across_tasks = share_buffer_across_tasks 
+        self._device_list = device_list  
         self._agent_summaries = []
         self._agent_ckpt_summaries = dict() 
         self.task_var_to_replay_idx = task_var_to_replay_idx
@@ -483,7 +483,7 @@ class EnvRunner(object):
         self._dev_cfg = dev_cfg
         self._rew_cfg = rew_cfg
         
-        self.clip_save_path = os.path.join(rew_cfg.data_path, rew_cfg.task_name, f'iteration{rew_cfg.save_itr}')
+        self.clip_save_path = os.path.join(rew_cfg.data_path, rew_cfg.task_names[0], f'iteration{rew_cfg.save_itr}')
         if not rew_cfg.overwrite:
             assert not os.path.exists(self.clip_save_path), f'{self.clip_save_path} already exists!'
 
@@ -537,9 +537,7 @@ class EnvRunner(object):
                     #     transition.info[self._buffer_key], 0)
                     task_id = transition.info.get(TASK_ID, 0)
                     var_id = transition.info.get(VAR_ID, 0) 
-                    replay_index = self.task_var_to_replay_idx[task_id][var_id]
-                    if self._share_buffer_across_tasks:
-                        replay_index = 0
+                    replay_index = self.task_var_to_replay_idx[task_id][var_id] 
                     rb = self._train_replay_buffer[replay_index]
                     rb.add(
                         np.array(transition.action), transition.reward,

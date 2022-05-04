@@ -1,4 +1,5 @@
 encoder.pkl
+irl/.ipynb_checkpoints
 irl/clip-tuned/
 irl/CLIP_ARM
 irl/outputs

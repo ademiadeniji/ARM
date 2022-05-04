@@ -1,7 +1,6 @@
 # tasks: ['pick_up_cup'] # ['pick_up_cup', 'pick_and_lift', 'push_button', 'reach_target', 'take_lid_off_saucepan']
 10_tasks:  [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,push_button,reach_target,lamp_on,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand,stack_wine]
-run_name: burn 
-mt_only:  True # True for no context, MT policy 
+run_name: burn  
 log_path: ??? 
 tasks_name: ???
 
@@ -22,7 +21,7 @@ rlbench:
     all_variations: ???  # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
     id_to_tasks: ??? 
     demos: 0
-    demo_path: /homed
+    demo_path: /home/mandi/all_rlbench_data
     episode_length: 10
     cameras: ${tasks.cameras}
     camera_resolution: [128, 128]
@@ -33,16 +32,17 @@ rlbench:
 
 replay:
     batch_size: 60 # total buff size, no task-aggregate anymore 
-    total_batch_size: 10000
+    total_batch_size: 60
     timesteps: 1
     prioritisation: True
     use_disk: False
     path: '/tmp/arm_sanity/replay'  # Only used when use_disk is True.
-    share_across_tasks: True
+    share_across_tasks: False
+    share_across_vars: True # same task gets the same buffer!
     replay_size: 100000 # total size 
     update_buffer_prio: True 
-    buffers_per_batch: 1
-    num_tasks_per_batch: -1
+    buffers_per_batch: 6
+    num_tasks_per_batch: 5
     num_vars_per_batch: -1 
     # ? make sure the multi-var tasks get multiple vars
 
@@ -75,23 +75,26 @@ framework:
     
 rew:
   task_reward: False
+  use_r3m: False 
+  r3m_path: /shared/ademi_adeniji/r3m/r3m/r3moutput/train_representation/2022-04-24_22-09-30/snapshot_240000.pt
   data_path: '/home/mandi/ARM/irl/CLIP_ARM/'
-  model_path: /home/mandi/ARM/irl/clip-tuned/
-  task_name: push_button
+  model_path: /home/mandi/ARM/irl/clip-tuned/  
+  task_names: ''
   model: 'demo_only_256x512'
   step: 100
   prompts: ["robot gripper tip touch square button"]
   save_data: False 
   overwrite: True
   save_itr: 0 
-  use_aug: False
+  use_aug: True
   aug_avg: 1
   predict_logits: False
-  scale_logits: False
+  scale_const: 1
   shift_t: True
+  camera: front # may need other cameras
 
 resume: False
-resume_path: '/home/mandi/ARM/log/' # or: /shared/mandi/irl_arm_log 
+resume_path: '/home/mandi/ARM/irl/log/' # or: /shared/mandi/irl_arm_log 
 resume_run: ''
 resume_step: 24300
 resume_freeze: []

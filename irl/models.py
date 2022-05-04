@@ -13,7 +13,6 @@ from glob import glob
 from natsort import natsorted
 import torch.nn as nn 
 import copy
-import os 
 import random 
 from torch.optim import Adam
 from einops import rearrange, repeat 
@@ -29,45 +28,50 @@ def _convert_image_to_rgb(image):
     return image.convert("RGB")
 
 class RewardMLP(nn.Module):
-    def __init__(self, clip_model, predict_logits=False):
+    def __init__(self, clip_model, hidden_layers=[256,512], scale_logit=False, predict_logit=False):
         super().__init__()
-        self.predict_logits = predict_logits
-        if predict_logits:
-            self.mlp = nn.Sequential(
-            nn.Linear(768*2, 256),
-            nn.ReLU(),
-            nn.Linear(256, 1),
-            nn.Tanh()
-            )
-        
+        self.predict_logit = predict_logit
+        self.scale_logit = scale_logit
+        if predict_logit:
+            print('Predicting logits with hidden sizes {} and output dim 1'.format(
+                hidden_layers))
+            linears = [nn.Linear(768*2, hidden_layers[0])]
+            for i in range(1, len(hidden_layers)):
+                linears.extend([
+                    nn.ReLU(), 
+                    nn.Linear(hidden_layers[i-1], hidden_layers[i])
+                ])
+            
+            linears += [
+                nn.ReLU(), 
+                nn.Linear(hidden_layers[-1], 1),
+                nn.Tanh()
+                ]
+            self.mlp = nn.Sequential(*linears)
         else:
-            self.img_mlp = nn.Sequential(
-                nn.Linear(768, 256),
-                nn.ReLU(),
-                nn.Linear(256, 512),
-                # nn.ReLU(),
-
-            ) #.to(torch.float16)
-            self.text_mlp = nn.Sequential(
-                nn.Linear(768, 256),
-                nn.ReLU(),
-                nn.Linear(256, 512),
-            )# .to(torch.float16)
-            self.logit_scale = copy.deepcopy(clip_model.logit_scale)
-            self.logit_scale.requires_grad = True 
+            linears = [nn.Linear(768, hidden_layers[0])]
+            for i in range(1, len(hidden_layers)):
+                linears.extend([
+                    nn.ReLU(), 
+                    nn.Linear(hidden_layers[i-1], hidden_layers[i]), 
+                ])
+            self.img_mlp = nn.Sequential(*linears)
+            self.text_mlp = nn.Sequential(*copy.deepcopy(linears)) 
+            if self.scale_logit:
+                self.logit_scale = copy.deepcopy(clip_model.logit_scale)
+                self.logit_scale.requires_grad = True 
         self.clip_model = clip_model 
  
         for p in self.clip_model.parameters():
             p.requires_grad = False
     
-    def forward(self, image, text, scale_logits=False):
+    def forward(self, image, text):
  
         with torch.no_grad():
             clip_img = self.clip_model.encode_image(image).detach().to(torch.float32)
             clip_text = self.clip_model.encode_text(text).detach().to(torch.float32) #  self.text_mlp(clip_text.to(torch.float32))
-        
-        
-        if self.predict_logits:
+         
+        if self.predict_logit:
             clip_text = repeat(clip_text, '1 d -> bb d', bb=clip_img.shape[0])  
             logits = self.mlp(torch.cat((clip_img, clip_text), dim=-1)).squeeze(-1)
  
@@ -79,7 +83,7 @@ class RewardMLP(nn.Module):
             text_features = text_features / text_features.norm(dim=-1, keepdim=True)
 
             # cosine similarity as logits
-            logit_scale = self.logit_scale.exp() if scale_logits else 1.0
+            logit_scale = self.logit_scale.exp() if self.scale_logit else 1.0
             logits = logit_scale * image_features @ text_features.t()
              
  

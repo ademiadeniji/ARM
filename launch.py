@@ -296,7 +296,9 @@ def main(cfg: DictConfig) -> None:
     if cfg.rlbench.task not in task_files:
         raise ValueError('Task %s not recognised!.' % cfg.rlbench.task)
     task_class = task_file_to_task_class(cfg.rlbench.task)
-
+    if cfg.rew.camera not in cfg.rlbench.cameras:
+        print('Reward model using a different camera!', cfg.rew.camera)
+        cfg.rlbench.cameras.append(cfg.rew.camera)
     cfg.rlbench.cameras = cfg.rlbench.cameras if isinstance(
         cfg.rlbench.cameras, ListConfig) else [cfg.rlbench.cameras]
     obs_config = _create_obs_config(cfg.rlbench.cameras,

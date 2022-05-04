@@ -6,7 +6,6 @@ load_step: 0
 
 task: push_button 
 prompts: ["robot gripper tip touch square button"]
-scale_logits: False
 device: 'cuda:0'
 
 itrs: 1000
@@ -14,6 +13,10 @@ log_freq: 50
 lr: 3e-4
 log_wb: True
 
+model:
+  hidden_layers: [256, 512]
+  scale_logit: False
+  predict_logit: False 
 
 dataset:
   idxs: [0]
@@ -22,10 +25,11 @@ dataset:
   val_steps: 10
   bsize: 12
   ntrajs: 50
+  concat_batch: False
   nframes: 3
   resize: 240
   flip_prob: 0.5
-  sample_expert_prob: 0.3
+  sample_expert_prob: 0.5
   sample_success_prob: 0.5
   fail_only: True # doesn't distinguish between expert and success! 
   

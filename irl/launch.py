@@ -78,48 +78,62 @@ def run_seed(
                     task_var_to_replay_idx[i][var] = 0
                 print(f"Task id {i}: {one_task}, **filled** replay for {len(its_variations)} variations")
             replays = [r]
+        
+        elif cfg.replay.share_across_vars:
+            replays = []
+            cfg.replay.replay_size = int(cfg.replay.replay_size / len(all_tasks))
+            for i, (one_task, its_variations) in enumerate(zip(all_tasks, cfg.rlbench.use_variations)):
+                r = c2farm.launch_utils.create_replay(
+                        cfg.replay.batch_size, cfg.replay.timesteps, cfg.replay.prioritisation,
+                        replay_path if cfg.replay.use_disk else None, 
+                        cams, env,  cfg.method.voxel_sizes,  replay_size=cfg.replay.replay_size)
+                for task_var in its_variations:
+                    var = int( task_var.split("_")[-1])
+                    c2farm.launch_utils.fill_replay(
+                        r, one_task, env, 
+                        (cfg.rlbench.demos if one_task not in cfg.tasks.get('no_demo_tasks', []) else 0),
+                        cfg.method.demo_augmentation,  cfg.method.demo_augmentation_every_n,
+                        cams, cfg.rlbench.scene_bounds, cfg.method.voxel_sizes,  cfg.method.bounds_offset, 
+                        cfg.method.rotation_resolution, cfg.method.crop_augmentation,
+                        augment_reward=False,
+                        variation=var,
+                        task_id=i
+                        )
+                    task_var_to_replay_idx[i][var] = len(replays) 
+                replays.append(r)
         else:
             replays = []
             cfg.replay.replay_size = int(cfg.replay.replay_size / sum([len(_vars) for _vars in cfg.rlbench.use_variations]) )
-            logging.info(f'Splitting total replay size into each buffer: {cfg.replay.replay_size}')
+            
             for i, (one_task, its_variations) in enumerate(zip(all_tasks, cfg.rlbench.use_variations)):
                 for task_var in its_variations:
                     var = int( task_var.split("_")[-1]) 
                     r = c2farm.launch_utils.create_replay(
-                        cfg.replay.batch_size, 
-                        cfg.replay.timesteps,
-                        cfg.replay.prioritisation,
-                        replay_path if cfg.replay.use_disk else None, cams, env,
-                        cfg.method.voxel_sizes, 
-                        replay_size=cfg.replay.replay_size)
+                        cfg.replay.batch_size, cfg.replay.timesteps, cfg.replay.prioritisation,
+                        replay_path if cfg.replay.use_disk else None, 
+                        cams, env,  cfg.method.voxel_sizes,  replay_size=cfg.replay.replay_size)
                     c2farm.launch_utils.fill_replay(
                         r, one_task, env, 
                         (cfg.rlbench.demos if one_task not in cfg.tasks.get('no_demo_tasks', []) else 0),
-                        cfg.method.demo_augmentation, 
-                        cfg.method.demo_augmentation_every_n,
-                        cams, cfg.rlbench.scene_bounds,
-                        cfg.method.voxel_sizes, 
-                        cfg.method.bounds_offset,
-                        cfg.method.rotation_resolution, 
-                        cfg.method.crop_augmentation,
-                        variation=var,
-                        task_id=i,
+                        cfg.method.demo_augmentation,  cfg.method.demo_augmentation_every_n,
+                        cams, cfg.rlbench.scene_bounds, cfg.method.voxel_sizes,  cfg.method.bounds_offset, 
+                        cfg.method.rotation_resolution, cfg.method.crop_augmentation,
                         augment_reward=False,
+                        variation=var,
+                        task_id=i
                         )
                     task_var_to_replay_idx[i][var] = len(replays) 
                     replays.append(r)
                     
                 # print(f"Task id {i}: {one_task}, **created** and filled replay for {len(its_variations)} variations")
+            logging.info(f'Splitting total replay size into each buffer: {cfg.replay.replay_size}')
             print('Created mapping from var ids to buffer ids:', task_var_to_replay_idx)
             cfg.replay.total_batch_size = int(cfg.replay.batch_size * cfg.replay.buffers_per_batch)
             if cfg.dev.augment_batch > 0:
                 cfg.replay.total_batch_size = int(
                     (cfg.replay.batch_size + cfg.dev.augment_batch) * cfg.replay.buffers_per_batch)
- 
-        if cfg.mt_only:
-            agent = c2farm.launch_utils.create_agent(cfg, env)
-        else:
-            agent = c2farm.launch_utils.create_agent_with_context(cfg, env)
+        
+        agent = c2farm.launch_utils.create_agent(cfg, env) 
     else:
         raise ValueError('Method %s does not exists.' % cfg.method.name)
 
@@ -148,8 +162,7 @@ def run_seed(
         with open(os.path.join(logdir, 'action_min_max.pkl'), 'wb') as f:
             pickle.dump(action_min_max, f) 
 
-    num_all_vars = sum([len(variations) for variations in cfg.rlbench.use_variations]) 
-    # if mt_only, generator doesn't sample context
+    num_all_vars = sum([len(variations) for variations in cfg.rlbench.use_variations])  
 
     rollout_generator = CustomRolloutGenerator( 
         one_hot=cfg.dev.one_hot, 
@@ -181,8 +194,7 @@ def run_seed(
         stat_accumulator=stat_accum,
         weightsdir=weightsdir,
         max_fails=cfg.rlbench.max_fails,
-        device_list=env_gpus,
-        share_buffer_across_tasks=cfg.replay.share_across_tasks, 
+        device_list=env_gpus, 
         task_var_to_replay_idx=task_var_to_replay_idx,
         eval_only=cfg.dev.eval_only, # only run eval EnvRunners 
         iter_eval=cfg.framework.ckpt_eval, # 
@@ -318,6 +330,10 @@ def main(cfg: DictConfig) -> None:
         )
     
     cfg.rlbench.all_tasks = all_tasks
+    if len(all_tasks) > 1:
+        assert cfg.rew.use_r3m, 'CLIP reward doesnot support multi-task'
+    cfg.rew.task_names = cfg.rlbench.all_tasks
+
     cfg.rlbench.id_to_tasks = [(i, tsk) for i, tsk in enumerate(all_tasks)]
     cfg.rlbench.all_variations = all_variations
     cfg.rlbench.use_variations = use_variations
@@ -325,16 +341,9 @@ def main(cfg: DictConfig) -> None:
 
     tasks_name = "-".join(tasks) + f"-{var_count}var"
     if len(tasks) > 2:
-        tasks_name = f'{len(tasks)}Task-{use_vars_count}var' 
-        if len(cfg.tasks.heldout) > 1:
-            tasks_name += f'-Heldout-{cfg.tasks.heldout}'
-        if len(cfg.tasks.get('no_demo_tasks', [])) == 1:
-            tasks_name += f'-NoDemo-{cfg.tasks.no_demo_tasks[0]}'
-        if len(cfg.tasks.get('no_demo_tasks', [])) > 1:
-            tasks_name += f'-NoDemo-{len(cfg.tasks.no_demo_tasks)}Tasks'
+        tasks_name = f'{len(tasks)}Task-{use_vars_count}var'  
         logging.info(f'Got {len(tasks)} tasks, re-naming the run as: {tasks_name}')
-    cfg.tasks_name = tasks_name
-    assert cfg.mt_only, 'no context used' 
+    cfg.tasks_name = tasks_name 
 
     cwd = os.getcwd()
 
