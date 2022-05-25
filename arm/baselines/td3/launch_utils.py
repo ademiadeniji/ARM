@@ -16,7 +16,9 @@ from arm.network_utils import SiameseNet, CNNAndFcsNet
 from arm.preprocess_agent import PreprocessAgent
 
 REWARD_SCALE = 100.0
-
+TASK_ID='task_id'
+VAR_ID='variation_id'
+CHECKPT='agent_checkpoint'
 
 def create_replay(batch_size: int, timesteps: int, prioritisation: bool,
                   save_dir: str, env: CustomRLBenchEnv):
@@ -24,6 +26,12 @@ def create_replay(batch_size: int, timesteps: int, prioritisation: bool,
     replay_class = UniformReplayBuffer
     if prioritisation:
         replay_class = PrioritizedReplayBuffer
+    extra_replay_elements = [
+        ReplayElement('demo', (), np.bool),
+        ReplayElement(TASK_ID, (), np.uint8),
+        ReplayElement(VAR_ID, (), np.uint8),
+        ReplayElement(CHECKPT, (), np.uint8),
+    ]
     replay_buffer = replay_class(
         save_dir=save_dir,
         batch_size=batch_size,
@@ -35,7 +43,7 @@ def create_replay(batch_size: int, timesteps: int, prioritisation: bool,
         reward_dtype=np.float32,
         update_horizon=1,
         observation_elements=observation_elements,
-        extra_replay_elements=[ReplayElement('demo', (), np.bool)]
+        extra_replay_elements=extra_replay_elements,
     )
     return replay_buffer
 

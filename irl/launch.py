@@ -3,7 +3,7 @@ Launch agents with dense learned reward
 """
 import os
 import sys
-sys.path.append('/home/mandi/ARM')
+sys.path.append('/shared/ademi_adeniji/ARM')
 import pickle 
 from arm.custom_rlbench_env_multitask import CustomMultiTaskRLBenchEnv
 
@@ -23,6 +23,8 @@ from custom_rollout_generator import CustomRolloutGenerator
 from yarr.utils.stat_accumulator import MultiTaskAccumulatorV2
 
 from arm import c2farm  
+from arm.baselines import td3
+import numpy as np
 import hydra
 import logging
 from omegaconf import DictConfig, OmegaConf, ListConfig
@@ -35,6 +37,16 @@ ACTION_MODE = ActionMode(
         ArmActionMode.ABS_EE_POSE_PLAN_WORLD_FRAME,
         GripperActionMode.OPEN_AMOUNT)
 LOG_CONFIG_KEYS = ['rlbench', 'replay', 'framework', 'rew', 'method', 'dev']
+
+def _modify_action_min_max(action_min_max):
+    # Make translation bounds a little bigger
+    action_min_max[0][0:3] -= np.fabs(action_min_max[0][0:3]) * 0.2
+    action_min_max[1][0:3] += np.fabs(action_min_max[1][0:3]) * 0.2
+    action_min_max[0][-1] = 0
+    action_min_max[1][-1] = 1
+    action_min_max[0][3:7] = np.array([-1, -1, -1, 0])
+    action_min_max[1][3:7] = np.array([1, 1, 1, 1])
+    return action_min_max
 
 def run_seed(
     cfg: DictConfig, 
@@ -134,6 +146,63 @@ def run_seed(
                     (cfg.replay.batch_size + cfg.dev.augment_batch) * cfg.replay.buffers_per_batch)
         
         agent = c2farm.launch_utils.create_agent(cfg, env) 
+    elif cfg.method.name == 'TD3':
+        action_min_max = (-1 * np.ones(8), np.ones(8))
+        
+        if cfg.replay.share_across_tasks:  
+            logging.info(f'Using only one replay for multiple tasks, one batch size: {cfg.replay.batch_size}')
+            r = td3.launch_utils.create_replay(
+                cfg.replay.batch_size, cfg.replay.timesteps,
+                cfg.replay.prioritisation,
+                replay_path if cfg.replay.use_disk else None, env)
+            for i, (one_task, its_variations) in enumerate(zip(all_tasks, cfg.rlbench.use_variations)):
+                for task_var in its_variations:
+                    var = int( task_var.split("_")[-1])  
+                    task_var_to_replay_idx[i][var] = 0
+                print(f"Task id {i}: {one_task}, **filled** replay for {len(its_variations)} variations")
+            replays = [r]
+        
+        elif cfg.replay.share_across_vars:
+            replays = []
+            cfg.replay.replay_size = int(cfg.replay.replay_size / len(all_tasks))
+            for i, (one_task, its_variations) in enumerate(zip(all_tasks, cfg.rlbench.use_variations)):
+                r = td3.launch_utils.create_replay(
+                    cfg.replay.batch_size, cfg.replay.timesteps,
+                    cfg.replay.prioritisation,
+                    replay_path if cfg.replay.use_disk else None, env)
+                for task_var in its_variations:
+                    var = int( task_var.split("_")[-1])
+                    task_var_to_replay_idx[i][var] = len(replays) 
+                replays.append(r)
+        else:
+            replays = []
+            cfg.replay.replay_size = int(cfg.replay.replay_size / sum([len(_vars) for _vars in cfg.rlbench.use_variations]) )
+            
+            for i, (one_task, its_variations) in enumerate(zip(all_tasks, cfg.rlbench.use_variations)):
+                for task_var in its_variations:
+                    var = int( task_var.split("_")[-1]) 
+                    r = td3.launch_utils.create_replay(
+                        cfg.replay.batch_size, cfg.replay.timesteps,
+                        cfg.replay.prioritisation,
+                        replay_path if cfg.replay.use_disk else None, env)
+                    task_var_to_replay_idx[i][var] = len(replays) 
+                    replays.append(r)
+                    
+                # print(f"Task id {i}: {one_task}, **created** and filled replay for {len(its_variations)} variations")
+            logging.info(f'Splitting total replay size into each buffer: {cfg.replay.replay_size}')
+            print('Created mapping from var ids to buffer ids:', task_var_to_replay_idx)
+            cfg.replay.total_batch_size = int(cfg.replay.batch_size * cfg.replay.buffers_per_batch)
+            if cfg.dev.augment_batch > 0:
+                cfg.replay.total_batch_size = int(
+                    (cfg.replay.batch_size + cfg.dev.augment_batch) * cfg.replay.buffers_per_batch)
+        
+        agent = td3.launch_utils.create_agent(
+            cams[0], cfg.method.activation, action_min_max,
+            cfg.rlbench.camera_resolution, cfg.method.critic_lr,
+            cfg.method.actor_lr, cfg.method.critic_weight_decay,
+            cfg.method.actor_weight_decay, cfg.method.tau,
+            cfg.method.critic_grad_clip, cfg.method.actor_grad_clip,
+            env.low_dim_state_len)
     else:
         raise ValueError('Method %s does not exists.' % cfg.method.name)
 
@@ -260,9 +329,9 @@ def run_seed(
     torch.cuda.empty_cache()
 
 
-@hydra.main(config_name='config_irl', config_path='/home/mandi/ARM/irl')
+@hydra.main(config_name='config_irl', config_path='/shared/ademi_adeniji/ARM/irl')
 def main(cfg: DictConfig) -> None:  
-    cfg.method = OmegaConf.load('/home/mandi/ARM/conf/method/C2FARM.yaml')
+    cfg.method = OmegaConf.load('/shared/ademi_adeniji/ARM/conf/method/TD3.yaml')
     if cfg.framework.gpu is not None and torch.cuda.is_available():
         device = torch.device("cuda:%d" % cfg.framework.gpu) 
         torch.backends.cudnn.enabled = torch.backends.cudnn.benchmark = True

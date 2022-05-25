@@ -269,7 +269,7 @@ class TD3Agent(Agent):
                 pi = self._clip_action(pi)
                 pi = torch.cat(
                     [pi[:, :3], self._actor._normalize(pi[:, 3:7]), pi[:, 7:]], dim=-1)
-            return ActResult(pi[0])
+            return ActResult(pi[0].cpu().numpy())
 
     def update_summaries(self) -> List[Summary]:
 

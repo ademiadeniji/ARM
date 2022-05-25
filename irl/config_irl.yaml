@@ -21,7 +21,7 @@ rlbench:
     all_variations: ???  # [ [task_A_0, task_A_1,...], [task_B_0, ...] ]
     id_to_tasks: ??? 
     demos: 0
-    demo_path: /home/mandi/all_rlbench_data
+    demo_path: /shared/ademi_adeniji/ARM/data
     episode_length: 10
     cameras: ${tasks.cameras}
     camera_resolution: [128, 128]
@@ -56,11 +56,11 @@ framework:
     transitions_before_train: 100
     tensorboard_logging: True
     csv_logging: False
-    wandb: True
+    wandb: False
     training_iterations: ${tasks.train_steps}
     eval_episodes: 2000
     gpu: 0
-    logdir: '/home/mandi/ARM/irl/log/'
+    logdir: '/shared/ademi_adeniji/ARM/irl/log/'
     seeds: 1
     resume: ${resume}
     resume_path: ${resume_path}
@@ -76,7 +76,7 @@ framework:
 rew:
   task_reward: False
   use_r3m: False 
-  r3m_path: /shared/ademi_adeniji/r3m/r3m/r3moutput/train_representation/2022-04-24_22-09-30/snapshot_240000.pt
+  r3m_path: /shared/ademi_adeniji/r3m/r3m/r3moutput/train_representation/2022-05-09_19-53-49/snapshot_50000.pt
   data_path: '/home/mandi/ARM/irl/CLIP_ARM/'
   model_path: /home/mandi/ARM/irl/clip-tuned/  
   task_names: ''
@@ -94,7 +94,7 @@ rew:
   camera: front # may need other cameras
 
 resume: False
-resume_path: '/home/mandi/ARM/irl/log/' # or: /shared/mandi/irl_arm_log 
+resume_path: '/shared/ademi_adeniji/ARM/irl/log/' # or: /shared/mandi/irl_arm_log 
 resume_run: ''
 resume_step: 24300
 resume_freeze: []
@@ -147,10 +147,10 @@ dev:
 
 
 wandb:
-    project: 'ContextARM'
-    entity:    mannndi
-    job_type: 'launch'
-    group:    'irl'
+    project: 'r3m_rlbench_rl'
+    entity:    adecyber
+    job_type: 'pretrain'
+    group:    'td3_10task'
 hydra:
     run:
         dir: ${framework.logdir}/ #${rlbench.task}/${method.name}
