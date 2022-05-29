@@ -129,6 +129,7 @@ class PyTorchTrainRunner(TrainRunner):
         self.task_vars = [task_var_to_replay_idx[_id] for _id in self.task_ids]
         print('Two-layer sampling from tasks and var ids:', self.task_ids, self.task_vars)
         self.online_task_ids = [int(k) for k in task_var_to_replay_idx.keys()]
+        print('Online tasks:', self.online_task_ids)
         if switch_online_tasks > 0:
             assert switch_online_tasks <= len(self.online_task_ids), f"Cannot select more tasks than avaliable"
             logging.warning(f'Environment runner priority-selects {switch_online_tasks} tasks from a total of {len(self.online_task_ids)} to run')
@@ -436,9 +437,7 @@ class PyTorchTrainRunner(TrainRunner):
             while (self._get_sum_add_counts() < self._transitions_before_train or self._get_min_add_counts() < single_buffer_bsize):
                 time.sleep(1)  
                 transition_wait += 1
-                if transition_wait % TRAN_WAIT_WARN == 0:
-                    logging.info('Need %d samples before training. Currently have %s in each buffer, which adds to %d in total, setting init_replay_size to: %s' %
-                    (self._transitions_before_train, str(self._get_add_counts()), self._get_sum_add_counts(), init_replay_size))
+                if transition_wait % TRAN_WAIT_WARN == 0: 
                     logging.info('Waiting for %d total samples before training. Currently have %s, min number of samples in buffer: %s' %
                     (self._transitions_before_train, self._get_sum_add_counts(), self._get_min_add_counts()))
                     # print([r.replay_buffer.add_count for r in self._wrapped_buffer])

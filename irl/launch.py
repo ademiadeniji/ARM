@@ -400,7 +400,7 @@ def main(cfg: DictConfig) -> None:
     
     cfg.rlbench.all_tasks = all_tasks
     if len(all_tasks) > 1:
-        assert cfg.rew.use_r3m, 'CLIP reward doesnot support multi-task'
+        assert cfg.rew.use_r3m or cfg.rew.task_reward, 'CLIP reward doesnot support multi-task'
     cfg.rew.task_names = cfg.rlbench.all_tasks
 
     cfg.rlbench.id_to_tasks = [(i, tsk) for i, tsk in enumerate(all_tasks)]

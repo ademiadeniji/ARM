@@ -26,4 +26,4 @@ dataset.sample_expert_prob=0.5 run_name=Button-Latest-ConcatBatch itrs=1000 \
     dataset.nframes=3 dataset.ntrajs=100 dataset.concat_batch=True \
     model.predict_logit=True
 
-# R3M reward
+

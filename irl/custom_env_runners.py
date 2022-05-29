@@ -7,7 +7,7 @@ from multiprocessing import Value, Manager
 from threading import Thread
 from typing import List
 from typing import Union
-
+import random
 import numpy as np
 
 from yarr.agents.agent import Agent
@@ -253,13 +253,18 @@ class _EnvRunner(object):
         env.launch()
         for ep in range(self._episodes):
             self._load_save()
-            logging.debug('%s: Starting episode %d.' % (name, ep))
+            logging.debug('%s: Starting episode %d.' % (name, ep)) 
             if not eval and len(self.online_task_ids) > 0:
                 logging.debug(f"env runner setting online tasks: {self.online_task_ids}")
+                #print("Setting avaliable tasks", self.online_task_ids)
                 env.set_avaliable_tasks(self.online_task_ids) 
             if not eval and self.online_buff_id.value > -1:
-                task_id, var_id = self._all_task_var_ids[self.online_buff_id.value] 
-                env.set_task_variation(task_id, var_id)
+                #print(f'online buffer: {self.online_buff_id.value}')
+                task_id, var_id = random.choice(
+                    self.replay_to_task_vars[self.online_buff_id.value]
+                    )
+                #print(f'online : task_id: {task_id}, var_id: {var_id}')
+                env.set_task_variation(task_id, var_id) 
             episode_rollout = []
             generator = self._rollout_generator.generator(
                 self._step_signal, env, self._agent,
@@ -355,6 +360,7 @@ class _EnvRunner(object):
                 
                 if self._kill_signal.value: 
                     logging.info('Finishing evaluation before full shutdown process', name, 'evaluating task + var:', task_id, var_id)
+                #print('Setting task + var:', task_id, var_id)
                 env.set_task_variation(task_id, var_id)
                 for ep in range(self._eval_episodes):
                     # print('%s: Starting episode %d.' % (name, ep))
@@ -472,11 +478,15 @@ class EnvRunner(object):
         self._agent_summaries = []
         self._agent_ckpt_summaries = dict() 
         self.task_var_to_replay_idx = task_var_to_replay_idx
-        self.num_tasks = len(self.task_var_to_replay_idx.keys())
         self._all_task_var_ids = []
+        self.replay_to_task_vars = collections.defaultdict(list)
         for task_id, var_dicts in task_var_to_replay_idx.items():
             self._all_task_var_ids.extend([(task_id, var_id) for var_id in var_dicts.keys() ])
+            for var_id, replay_idx in var_dicts.items():
+                self.replay_to_task_vars[replay_idx].append((task_id, var_id))
         logging.info(f'Counted a total of {len(self._all_task_var_ids)} variations')
+        print('Replay index to task var mapping: ', self.replay_to_task_vars)
+
         
         self._eval_only = eval_only
         if eval_only:
@@ -561,54 +571,21 @@ class EnvRunner(object):
                     if transition.terminal:
                         self._total_episodes['eval_envs' if eval else 'train_envs'] += 1
 
-                    if self._stat_accumulator is not None:
-                        self._stat_accumulator.step(transition, eval)
-                self._internal_env_runner.all_task_transitions[task]['stored_transitions'][:] = []  # Clear list
-                # logging.info('Finished EnvRunner calling internal runner write lock')
-                if len(self._internal_env_runner.all_task_transitions[task]['clip_episodes']) > 0:  
-                    os.makedirs(f'{self.clip_save_path}/success', exist_ok=True)
-                    os.makedirs(f'{self.clip_save_path}/fail', exist_ok=True) 
-                    for episode in self._internal_env_runner.all_task_transitions[task]['clip_episodes']:
-                        folder = 'success' if episode[-1].info.get('task_success', False) else 'fail'
-                        eps_idx = len(glob(f'{self.clip_save_path}/{folder}/episode*')) 
-                        if eps_idx <= 5000:
-                            new_path = f'{self.clip_save_path}/{folder}/episode{eps_idx}'
-                            if eps_idx % 50 == 0:
-                                print('Saving episode:', new_path)
-                            os.makedirs(new_path, exist_ok=False)
-                            for i, transition in enumerate(episode):
-                                with open(f'{new_path}/{i}.pkl', 'wb') as f:
-                                    pickle.dump(transition, f)
-                    self._internal_env_runner.all_task_transitions[task]['clip_episodes'][:] = []
-                
-                for ckpt_step, all_transitions in self._internal_env_runner.all_task_transitions[task]['stored_ckpt_eval_transitions'].items():
-                    if ckpt_step in self._internal_env_runner.all_task_transitions[task]['finished_eval_checkpoint']:  
-                        for name, transition in all_transitions:
-                            self._new_transitions['eval_envs'] += 1
-                            self._total_transitions['eval_envs'] += 1
-                            if transition.terminal:
-                                self._total_episodes['eval_envs'] += 1 
-                        
-                        self._agent_ckpt_summaries[ckpt_step] = self._internal_env_runner.all_task_transitions[task]['agent_ckpt_eval_summaries'].pop(ckpt_step, [])
-                        if self._stat_accumulator is not None:
-                            self._stat_accumulator.step_all_transitions_from_ckpt(all_transitions, ckpt_step)
-                        self._internal_env_runner.all_task_transitions[task]['stored_ckpt_eval_transitions'].pop(ckpt_step, []) # Clear 
-                        
+                    logging.debug('Done poping ckpt {} eval transitions to accumulator, main EnvRunner stored {} agent summaries, remaining ckpts: '.format(
+                        ckpt_step, 
+                        len(self._agent_ckpt_summaries.get(ckpt_step, []))), 
+                        self._internal_env_runner.stored_ckpt_eval_transitions.keys() 
+                        )
 
-                        logging.debug('Done poping ckpt {} eval transitions to accumulator, main EnvRunner stored {} agent summaries, remaining ckpts: '.format(
-                            ckpt_step, 
-                            len(self._agent_ckpt_summaries.get(ckpt_step, []))), 
-                            self._internal_env_runner.all_task_transitions[task]['stored_ckpt_eval_transitions'].keys() 
-                            )
-
-                self.buffer_add_counts[:] = [int(r.add_count) for r in self._train_replay_buffer]
-                demo_cursor = self._train_replay_buffer[0]._demo_cursor
-                if demo_cursor > 0: # i.e. only on-line samples can be used for context
-                    self.buffer_add_counts[:] = [int(r.add_count - r._demo_cursor) for r in self._train_replay_buffer]
-                self._internal_env_runner.online_buff_id.value = -1 
-                if self._train_replay_buffer[0].batch_size > min(self.buffer_add_counts):
-                    buff_id = np.argmin(self.buffer_add_counts) 
-                    self._internal_env_runner.online_buff_id.value = buff_id
+            self.buffer_add_counts[:] = [int(r.add_count) for r in self._train_replay_buffer]
+            demo_cursor = self._train_replay_buffer[0]._demo_cursor
+            if demo_cursor > 0: # i.e. only on-line samples can be used for context
+                self.buffer_add_counts[:] = [int(r.add_count - r._demo_cursor) for r in self._train_replay_buffer]
+            self._internal_env_runner.online_buff_id.value = -1 
+            # if self._train_replay_buffer[0].batch_size > min(self.buffer_add_counts): 
+            #     buff_id = np.argmin(self.buffer_add_counts) 
+            #     print('Setting buffer id to prioritize low-count buffers', buff_id)
+            #     self._internal_env_runner.online_buff_id.value = buff_id
              
         return new_transitions
  

@@ -11,7 +11,7 @@ tasks:
   num_vars: -1
   heldout: ''
   demo_length: 1 
-  train_steps: 10000
+  train_steps: 10_000
   log_freq:   100 
 
 rlbench: 
@@ -42,7 +42,7 @@ replay:
     replay_size: 100000 # total size 
     update_buffer_prio: True 
     buffers_per_batch: 6
-    num_tasks_per_batch: 5
+    num_tasks_per_batch: 1
     num_vars_per_batch: -1 
     # ? make sure the multi-var tasks get multiple vars
 
@@ -75,9 +75,14 @@ framework:
     
 rew:
   task_reward: False
+<<<<<<< HEAD
   shaped_rewards: False
   use_r3m: True 
   r3m_path: /shared/ademi_adeniji/r3m/r3m/r3moutput/train_representation/2022-05-09_19-53-49/snapshot_50000.pt
+=======
+  use_r3m: False 
+  r3m_path: /shared/ademi_adeniji/r3m/r3m/r3moutput/train_representation/2022-05-02_13-56-57/snapshot_160000.pt # /shared/ademi_adeniji/r3m/r3m/r3moutput/train_representation/2022-04-24_22-09-30/snapshot_240000.pt
+>>>>>>> 29e8449704bc2fdce9db00bf46af65cd0de1b001
   data_path: '/home/mandi/ARM/irl/CLIP_ARM/'
   model_path: /home/mandi/ARM/irl/clip-tuned/  
   task_names: ''
