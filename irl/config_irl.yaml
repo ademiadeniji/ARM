@@ -75,14 +75,9 @@ framework:
     
 rew:
   task_reward: False
-<<<<<<< HEAD
   shaped_rewards: False
   use_r3m: True 
   r3m_path: /shared/ademi_adeniji/r3m/r3m/r3moutput/train_representation/2022-05-09_19-53-49/snapshot_50000.pt
-=======
-  use_r3m: False 
-  r3m_path: /shared/ademi_adeniji/r3m/r3m/r3moutput/train_representation/2022-05-02_13-56-57/snapshot_160000.pt # /shared/ademi_adeniji/r3m/r3m/r3moutput/train_representation/2022-04-24_22-09-30/snapshot_240000.pt
->>>>>>> 29e8449704bc2fdce9db00bf46af65cd0de1b001
   data_path: '/home/mandi/ARM/irl/CLIP_ARM/'
   model_path: /home/mandi/ARM/irl/clip-tuned/  
   task_names: ''

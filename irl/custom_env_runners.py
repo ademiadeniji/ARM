@@ -71,7 +71,6 @@ class _EnvRunner(object):
                  weightsdir: str = None,
                  device_list: List[int] = None, 
                  all_task_var_ids = None,
-                 num_tasks=0,
                  final_checkpoint_step = 999, 
                  ):
         self._train_env = train_env
@@ -90,23 +89,21 @@ class _EnvRunner(object):
 
         self._p_args = {}
         self.p_failures = {}
-        self.num_tasks = num_tasks
-        self.all_task_transitions = {}
-        for task in range(self.num_tasks):
-            manager= Manager()
-            self.all_task_transitions[task] = {}
-            self.all_task_transitions[task]['write_lock'] = manager.Lock()
-            self.all_task_transitions[task]['stored_transitions'] = manager.list()
-            self.all_task_transitions[task]['agent_summaries'] = manager.list() 
-            self.all_task_transitions[task]['clip_episodes'] = manager.list()
-            self.all_task_transitions[task]['stored_ckpt_eval_transitions'] = manager.dict() 
-            self.all_task_transitions[task]['agent_ckpt_eval_summaries'] = manager.dict()
-            self.all_task_transitions[task]['loaded_eval_checkpoint'] = manager.list()
-            self.all_task_transitions[task]['finished_eval_checkpoint'] = manager.list()
+        manager = Manager()
+        self.write_lock = manager.Lock()
+        self.stored_transitions = manager.list()
+        self.agent_summaries = manager.list() 
+        self.clip_episodes = manager.list()
+
+        self.stored_ckpt_eval_transitions = manager.dict() 
+        self.agent_ckpt_eval_summaries = manager.dict()
+
         self._kill_signal = kill_signal
         self._step_signal = step_signal
 
         self._agent_checkpoint = Value('i', -1)
+        self._loaded_eval_checkpoint = manager.list()
+        self._finished_eval_checkpoint = manager.list()
         self.final_checkpoint_step = final_checkpoint_step
         logging.info('Expected final checkpoint to be saved at step: {}'.format(self.final_checkpoint_step))
 
@@ -126,27 +123,26 @@ class _EnvRunner(object):
         p.start()
         return p
 
-    # def spin_up_envs(self, name: str, num_envs: int, eval: bool):
-    #     ps = []
-    #     for i in range(num_envs):
-    #         n = name + str(i)
-    #         self._p_args[n] = (n, eval)
-    #         self.p_failures[n] = 0
-    #         p = Process(target=self._run_env, args=self._p_args[n], name=n)
-    #         p.start()
-    #         ps.append(p)
-    #     return ps
-    
-    def spinup_train_and_eval(self, n_train, n_eval, all_task_var_ids, name='env', iter_eval=False):
+    def spin_up_envs(self, name: str, num_envs: int, eval: bool):
         ps = []
-        # i = 0
+        for i in range(num_envs):
+            n = name + str(i)
+            self._p_args[n] = (n, eval)
+            self.p_failures[n] = 0
+            p = Process(target=self._run_env, args=self._p_args[n], name=n)
+            p.start()
+            ps.append(p)
+        return ps
+    
+    def spinup_train_and_eval(self, n_train, n_eval, name='env', iter_eval=False):
+        ps = []
+        i = 0
         # num_cpus = os.cpu_count()
         # print(f"Found {num_cpus} cpus, limiting:")
         # per_proc = int(num_cpus / (n_train+n_eval))
         for i in range(n_train):
             n = 'train_' + name + str(i)
-            task_id = all_task_var_ids[i][0]
-            self._p_args[n] = (n, False, i, task_id)
+            self._p_args[n] = (n, False, i)
             self.p_failures[n] = 0
             p = Process(target=self._run_env, args=self._p_args[n], name=n)
             p.start() 
@@ -155,8 +151,7 @@ class _EnvRunner(object):
         
         for j in range(n_train, n_train + n_eval):
             n = 'eval_' + name + str(j)
-            task_id = all_task_var_ids[i][0]
-            self._p_args[n] = (n, True, j, task_id)
+            self._p_args[n] = (n, True, j)
             self.p_failures[n] = 0
             p = Process(target=(self._iterate_all_vars if iter_eval else self._run_env), args=self._p_args[n], name=n)
             p.start()
@@ -191,7 +186,7 @@ class _EnvRunner(object):
             logging.info('Waiting for weights to become available.')
             time.sleep(1)
 
-    def _load_next_unevaled(self, task_idx: int):
+    def _load_next_unevaled(self):
         if self._weightsdir is None:
             logging.info("'weightsdir' was None, so not loading weights.")
             return
@@ -203,7 +198,7 @@ class _EnvRunner(object):
 
                 if len(weight_folders) > 0:
                     weight_folders = sorted(map(int, weight_folders))
-                    new_weight_folders = [w for w in weight_folders if w not in self.all_task_transitions[task_idx]['loaded_eval_checkpoint']]
+                    new_weight_folders = [w for w in weight_folders if w not in self._loaded_eval_checkpoint ]
                     # load the next unevaluated checkpoint  
                 if len(new_weight_folders) > 0:
                     w = new_weight_folders[0]  
@@ -217,11 +212,11 @@ class _EnvRunner(object):
                         time.sleep(1)
                         self._agent.load_weights(d)
                     print('Agent %s: Loaded weights: %s for evaluation' % (self._name, d)) 
-                    with self.all_task_transitions[task_idx]['write_lock']:
-                        self.all_task_transitions[task_idx]['loaded_eval_checkpoint'].append(w) 
+                    with self.write_lock:
+                        self._loaded_eval_checkpoint.append(w) 
                     return False 
             logging.info('Waiting for weights to become available.') 
-            if max(self.all_task_transitions[task_idx]['loaded_eval_checkpoint']) == self.final_checkpoint_step:
+            if max(self._loaded_eval_checkpoint) == self.final_checkpoint_step:
                 print('Found %s final checkpoint, Stop looking for new saved checkpoints' % self._name)
                 return int(self._agent.get_checkpoint()) == -1
             time.sleep(1)  
@@ -231,7 +226,7 @@ class _EnvRunner(object):
             return np.float32
         return x.dtype
 
-    def _run_env(self, name: str, eval: bool, proc_idx: int, task_idx: int):
+    def _run_env(self, name: str, eval: bool, proc_idx: int):
         
         self._name = name
 
@@ -294,13 +289,13 @@ class _EnvRunner(object):
                             'Env Runner process %s have been waiting for replay_ratio %f to be more than %f for %d seconds' %
                             (name, self._current_replay_ratio.value, self._target_replay_ratio, slept))
                             
-                    with self.all_task_transitions[task_idx]['write_lock']:
+                    with self.write_lock:
                         # logging.warning(f'proc {name}, idx {proc_idx} writing agent summaries')
-                        if len(self.all_task_transitions[task_idx]['agent_summaries']) == 0:
+                        if len(self.agent_summaries) == 0:
                             # Only store new summaries if the previous ones
                             # have been popped by the main env runner.
                             for s in self._agent.act_summaries():
-                                self.all_task_transitions[task_idx]['agent_summaries'].append(s)
+                                self.agent_summaries.append(s)
                         # logging.warning(f'proc {name}, idx {proc_idx} finished writing agent summaries')
                     
                     episode_rollout.append(replay_transition)
@@ -310,19 +305,19 @@ class _EnvRunner(object):
                 env.shutdown()
                 raise e
 
-            with self.all_task_transitions[task_idx]['write_lock']: 
+            with self.write_lock: 
                 # logging.warning(f'proc {name}, idx {proc_idx} adding to stored transitions')
                 if self._rollout_generator._rew_cfg.save_data: 
-                    self.all_task_transitions[task_idx]['clip_episodes'].append(episode_rollout)
+                    self.clip_episodes.append(episode_rollout)
                 for transition in episode_rollout:
                     if 'task_success' in transition.info.keys():
                         transition.info.pop('task_success')
-                    self.all_task_transitions[task_idx]['stored_transitions'].append((name, transition, eval))
+                    self.stored_transitions.append((name, transition, eval))
                 
                 # logging.warning(f'proc {name}, idx {proc_idx} finished adding to stored transitions') 
         env.shutdown()
 
-    def _iterate_all_vars(self, name: str,  eval: bool, proc_idx: int, task_idx: int): 
+    def _iterate_all_vars(self, name: str,  eval: bool, proc_idx: int): 
         # use for eval env only 
         self._name = name
         self._agent = copy.deepcopy(self._agent)
@@ -339,7 +334,7 @@ class _EnvRunner(object):
         env.launch()
          
         while True: 
-            shutdown = self._load_next_unevaled(task_idx)
+            shutdown = self._load_next_unevaled()
             if shutdown:
                 print('Shutting down process %s since other threads are evaluating the last checkpoint' % name)
                 env.shutdown()
@@ -349,7 +344,7 @@ class _EnvRunner(object):
             #     env.shutdown()
             #     return 
             ckpt = int(self._agent.get_checkpoint()) 
-            assert ckpt not in self.all_task_transitions[task_idx]['stored_ckpt_eval_transitions'].keys(), 'There should be no transitions stored for this ckpt'
+            assert ckpt not in self.stored_ckpt_eval_transitions.keys(), 'There should be no transitions stored for this ckpt'
             # with self.write_lock:
             #     self.stored_ckpt_eval_transitions[ckpt] = []
             #     self.agent_ckpt_eval_summaries[ckpt] = [] 
@@ -391,20 +386,20 @@ class _EnvRunner(object):
                     for transition in episode_rollout:
                         all_episode_rollout.append((name, transition)) 
                         num_eval_steps += 1
-                        with self.all_task_transitions[task_idx]['write_lock']:  
-                            self.all_task_transitions[task_idx]['stored_transitions'].append((name, transition, True)) 
+                        with self.write_lock:  
+                            self.stored_transitions.append((name, transition, True)) 
                          
 
 
-            with self.all_task_transitions[task_idx]['write_lock']: 
-                self.all_task_transitions[task_idx]['stored_ckpt_eval_transitions'][ckpt] = all_episode_rollout  
-                self.all_task_transitions[task_idx]['agent_ckpt_eval_summaries'][ckpt] = all_agent_summaries
-                self.all_task_transitions[task_idx]['finished_eval_checkpoint'].append(ckpt)
+            with self.write_lock: 
+                self.stored_ckpt_eval_transitions[ckpt] = all_episode_rollout  
+                self.agent_ckpt_eval_summaries[ckpt] = all_agent_summaries
+                self._finished_eval_checkpoint.append(ckpt)
 
             
-            print(f"Checkpoint {ckpt} finished evaluating, all {len(self.all_task_transitions[task_idx]['stored_ckpt_eval_transitions'][ckpt])} transitions and agent act summaries stored ") 
-            if self._kill_signal.value and max(self.all_task_transitions[task_idx]['loaded_eval_checkpoint']) == self.final_checkpoint_step:
-                while len(self.all_task_transitions[task_idx]['stored_ckpt_eval_transitions'].get(ckpt, [])) > 0:
+            print(f'Checkpoint {ckpt} finished evaluating, all {len(self.stored_ckpt_eval_transitions[ckpt])} transitions and agent act summaries stored ') 
+            if self._kill_signal.value and max(self._loaded_eval_checkpoint) == self.final_checkpoint_step:
+                while len(self.stored_ckpt_eval_transitions.get(ckpt, [])) > 0:
                     time.sleep(1)
                     print('Process %s waiting for all evaled transitions to be logged' % name)
                 print('Process %s shutting down after current ckpt is done evaluating' % name)
@@ -478,6 +473,7 @@ class EnvRunner(object):
         self._agent_summaries = []
         self._agent_ckpt_summaries = dict() 
         self.task_var_to_replay_idx = task_var_to_replay_idx
+
         self._all_task_var_ids = []
         self.replay_to_task_vars = collections.defaultdict(list)
         for task_id, var_dicts in task_var_to_replay_idx.items():
@@ -531,45 +527,79 @@ class EnvRunner(object):
     def _update(self):
         # Move the stored transitions to the replay and accumulate statistics.
         new_transitions = collections.defaultdict(int)
-        self._agent_summaries = []
-        for task in range(self.num_tasks):
-            with self._internal_env_runner.all_task_transitions[task]['write_lock']:
-                # logging.info('EnvRunner calling internal runner write lock')
-                self._agent_summaries.append(self._internal_env_runner.all_task_transitions[task]['agent_summaries'])
-                if self._step_signal.value % self.log_freq == 0 and self._step_signal.value > 0:
-                    self._internal_env_runner.all_task_transitions[task]['agent_summaries'][:] = []
-                
-                
-                for name, transition, eval in self._internal_env_runner.all_task_transitions[task]['stored_transitions']:
-                    add_to_buffer = (not eval) or self._eval_replay_buffer is not None
-                    if self._train_envs == 0:
-                        add_to_buffer = True # for PEARL agent, need to update buffer with eval transitions!
-                    if add_to_buffer:
-                        kwargs = dict(transition.observation)
-                        kwargs.update(transition.info)
-                        # assert self._buffer_key in transition.info.keys(), \
-                        #     f'Need to look for **{self._buffer_key}** in replay transition to know which buffer to add it to'
-                        # replay_index = self.task_var_to_replay_idx.get(
-                        #     transition.info[self._buffer_key], 0)
-                        task_id = transition.info.get(TASK_ID, 0)
-                        var_id = transition.info.get(VAR_ID, 0) 
-                        replay_index = self.task_var_to_replay_idx[task_id][var_id] 
-                        rb = self._train_replay_buffer[replay_index]
-                        rb.add(
-                            np.array(transition.action), transition.reward,
-                            transition.terminal,
-                            transition.timeout, **kwargs)
-                        if transition.terminal:
-                            rb.add_final(
-                                **transition.final_observation)
-                    new_transitions[name] += 1
-                    self._new_transitions[
-                        'eval_envs' if eval else 'train_envs'] += 1
-                    self._total_transitions[
-                        'eval_envs' if eval else 'train_envs'] += 1
-                    
+        
+        with self._internal_env_runner.write_lock:
+            # logging.info('EnvRunner calling internal runner write lock')
+            self._agent_summaries = list(
+                self._internal_env_runner.agent_summaries)
+            if self._step_signal.value % self.log_freq == 0 and self._step_signal.value > 0:
+                self._internal_env_runner.agent_summaries[:] = []
+            
+            
+            for name, transition, eval in self._internal_env_runner.stored_transitions:
+                add_to_buffer = (not eval) or self._eval_replay_buffer is not None
+                if self._train_envs == 0:
+                    add_to_buffer = True # for PEARL agent, need to update buffer with eval transitions!
+                if add_to_buffer:
+                    kwargs = dict(transition.observation)
+                    kwargs.update(transition.info)
+                    # assert self._buffer_key in transition.info.keys(), \
+                    #     f'Need to look for **{self._buffer_key}** in replay transition to know which buffer to add it to'
+                    # replay_index = self.task_var_to_replay_idx.get(
+                    #     transition.info[self._buffer_key], 0)
+                    task_id = transition.info.get(TASK_ID, 0)
+                    var_id = transition.info.get(VAR_ID, 0) 
+                    replay_index = self.task_var_to_replay_idx[task_id][var_id] 
+                    rb = self._train_replay_buffer[replay_index]
+                    rb.add(
+                        np.array(transition.action), transition.reward,
+                        transition.terminal,
+                        transition.timeout, **kwargs)
                     if transition.terminal:
-                        self._total_episodes['eval_envs' if eval else 'train_envs'] += 1
+                        rb.add_final(
+                            **transition.final_observation)
+                new_transitions[name] += 1
+                self._new_transitions[
+                    'eval_envs' if eval else 'train_envs'] += 1
+                self._total_transitions[
+                    'eval_envs' if eval else 'train_envs'] += 1
+                
+                if transition.terminal:
+                    self._total_episodes['eval_envs' if eval else 'train_envs'] += 1
+
+                if self._stat_accumulator is not None:
+                    self._stat_accumulator.step(transition, eval)
+            self._internal_env_runner.stored_transitions[:] = []  # Clear list
+            # logging.info('Finished EnvRunner calling internal runner write lock')
+            if len(self._internal_env_runner.clip_episodes) > 0:  
+                os.makedirs(f'{self.clip_save_path}/success', exist_ok=True)
+                os.makedirs(f'{self.clip_save_path}/fail', exist_ok=True) 
+                for episode in self._internal_env_runner.clip_episodes:
+                    folder = 'success' if episode[-1].info.get('task_success', False) else 'fail'
+                    eps_idx = len(glob(f'{self.clip_save_path}/{folder}/episode*')) 
+                    if eps_idx <= 5000:
+                        new_path = f'{self.clip_save_path}/{folder}/episode{eps_idx}'
+                        if eps_idx % 50 == 0:
+                            print('Saving episode:', new_path)
+                        os.makedirs(new_path, exist_ok=False)
+                        for i, transition in enumerate(episode):
+                            with open(f'{new_path}/{i}.pkl', 'wb') as f:
+                                pickle.dump(transition, f)
+                self._internal_env_runner.clip_episodes[:] = []
+            
+            for ckpt_step, all_transitions in self._internal_env_runner.stored_ckpt_eval_transitions.items():
+                if ckpt_step in self._internal_env_runner._finished_eval_checkpoint:  
+                    for name, transition in all_transitions:
+                        self._new_transitions['eval_envs'] += 1
+                        self._total_transitions['eval_envs'] += 1
+                        if transition.terminal:
+                            self._total_episodes['eval_envs'] += 1 
+                    
+                    self._agent_ckpt_summaries[ckpt_step] = self._internal_env_runner.agent_ckpt_eval_summaries.pop(ckpt_step, [])
+                    if self._stat_accumulator is not None:
+                        self._stat_accumulator.step_all_transitions_from_ckpt(all_transitions, ckpt_step)
+                    self._internal_env_runner.stored_ckpt_eval_transitions.pop(ckpt_step, []) # Clear 
+                    
 
                     logging.debug('Done poping ckpt {} eval transitions to accumulator, main EnvRunner stored {} agent summaries, remaining ckpts: '.format(
                         ckpt_step, 
@@ -608,14 +638,13 @@ class EnvRunner(object):
             weightsdir=self._weightsdir, 
             device_list=(self.device_list if len(self.device_list) >= 1 else None),
             all_task_var_ids=self._all_task_var_ids,
-            num_tasks=self.num_tasks,
             eval_episodes=self._eval_episodes,
             final_checkpoint_step=self.final_checkpoint_step, 
             )
         #training_envs = self._internal_env_runner.spin_up_envs('train_env', self._train_envs, False)
         #eval_envs = self._internal_env_runner.spin_up_envs('eval_env', self._eval_envs, True)
         #envs = training_envs + eval_envs
-        envs = self._internal_env_runner.spinup_train_and_eval(self._train_envs, self._eval_envs, self._all_task_var_ids, 'env', iter_eval=self._iter_eval)
+        envs = self._internal_env_runner.spinup_train_and_eval(self._train_envs, self._eval_envs, 'env', iter_eval=self._iter_eval)
         no_transitions = {env.name: 0 for env in envs}
         while True:
             for p in envs:
@@ -633,23 +662,8 @@ class EnvRunner(object):
                         p = self._internal_env_runner.restart_process(p.name)
                         envs.append(p)
 
-            stored_transitions = 0
-            stored_ckpt_eval_transitions = 0
-            for task in range(self.num_tasks):
-                # if len(self._internal_env_runner.all_task_transitions[task]['stored_transitions']) < 1:
-                #     stored_transitions = 0
-                #     stored_ckpt_eval_transitions = 0
-                #     break
-                # if len(self._internal_env_runner.all_task_transitions[task]['stored_ckpt_eval_transitions']) < 1:
-                #     stored_transitions = 0
-                #     stored_ckpt_eval_transitions = 0
-                #     break
-                stored_transitions += len(self._internal_env_runner.all_task_transitions[task]['stored_transitions'])
-                stored_ckpt_eval_transitions += len(self._internal_env_runner.all_task_transitions[task]['stored_ckpt_eval_transitions'])
-            # if stored_transitions == 1 and stored_ckpt_eval_transitions == 1:
-            #     logging.info("every task collected a transition")
-            if not self._kill_signal.value or stored_transitions > 0 or \
-                 stored_ckpt_eval_transitions > 0:
+            if not self._kill_signal.value or len(self._internal_env_runner.stored_transitions) > 0 or \
+                 len(self._internal_env_runner.stored_ckpt_eval_transitions) > 0:
                 new_transitions = self._update()
                 for p in envs:
                     if new_transitions[p.name] == 0:
