@@ -7,7 +7,7 @@ from multiprocessing import Value, Manager
 from threading import Thread
 from typing import List
 from typing import Union
-
+import random
 import numpy as np
 
 from yarr.agents.agent import Agent
@@ -248,13 +248,18 @@ class _EnvRunner(object):
         env.launch()
         for ep in range(self._episodes):
             self._load_save()
-            logging.debug('%s: Starting episode %d.' % (name, ep))
+            logging.debug('%s: Starting episode %d.' % (name, ep)) 
             if not eval and len(self.online_task_ids) > 0:
                 logging.debug(f"env runner setting online tasks: {self.online_task_ids}")
+                #print("Setting avaliable tasks", self.online_task_ids)
                 env.set_avaliable_tasks(self.online_task_ids) 
             if not eval and self.online_buff_id.value > -1:
-                task_id, var_id = self._all_task_var_ids[self.online_buff_id.value] 
-                env.set_task_variation(task_id, var_id)
+                #print(f'online buffer: {self.online_buff_id.value}')
+                task_id, var_id = random.choice(
+                    self.replay_to_task_vars[self.online_buff_id.value]
+                    )
+                #print(f'online : task_id: {task_id}, var_id: {var_id}')
+                env.set_task_variation(task_id, var_id) 
             episode_rollout = []
             generator = self._rollout_generator.generator(
                 self._step_signal, env, self._agent,
@@ -350,6 +355,7 @@ class _EnvRunner(object):
                 
                 if self._kill_signal.value: 
                     logging.info('Finishing evaluation before full shutdown process', name, 'evaluating task + var:', task_id, var_id)
+                #print('Setting task + var:', task_id, var_id)
                 env.set_task_variation(task_id, var_id)
                 for ep in range(self._eval_episodes):
                     # print('%s: Starting episode %d.' % (name, ep))
@@ -467,10 +473,16 @@ class EnvRunner(object):
         self._agent_summaries = []
         self._agent_ckpt_summaries = dict() 
         self.task_var_to_replay_idx = task_var_to_replay_idx
+
         self._all_task_var_ids = []
+        self.replay_to_task_vars = collections.defaultdict(list)
         for task_id, var_dicts in task_var_to_replay_idx.items():
             self._all_task_var_ids.extend([(task_id, var_id) for var_id in var_dicts.keys() ])
+            for var_id, replay_idx in var_dicts.items():
+                self.replay_to_task_vars[replay_idx].append((task_id, var_id))
         logging.info(f'Counted a total of {len(self._all_task_var_ids)} variations')
+        print('Replay index to task var mapping: ', self.replay_to_task_vars)
+
         
         self._eval_only = eval_only
         if eval_only:
@@ -600,9 +612,10 @@ class EnvRunner(object):
             if demo_cursor > 0: # i.e. only on-line samples can be used for context
                 self.buffer_add_counts[:] = [int(r.add_count - r._demo_cursor) for r in self._train_replay_buffer]
             self._internal_env_runner.online_buff_id.value = -1 
-            if self._train_replay_buffer[0].batch_size > min(self.buffer_add_counts):
-                buff_id = np.argmin(self.buffer_add_counts) 
-                self._internal_env_runner.online_buff_id.value = buff_id
+            # if self._train_replay_buffer[0].batch_size > min(self.buffer_add_counts): 
+            #     buff_id = np.argmin(self.buffer_add_counts) 
+            #     print('Setting buffer id to prioritize low-count buffers', buff_id)
+            #     self._internal_env_runner.online_buff_id.value = buff_id
              
         return new_transitions
  
