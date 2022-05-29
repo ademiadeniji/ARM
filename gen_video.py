@@ -13,6 +13,7 @@ from rlbench.action_modes import ActionMode, ArmActionMode, GripperActionMode
 from rlbench.backend.utils import task_file_to_task_class
 
 from arm import c2farm
+from arm.baselines import td3
 from arm.custom_rlbench_env import CustomRLBenchEnv
 from arm.utils import visualise_voxel
 from launch_multitask import _create_obs_config
@@ -22,6 +23,8 @@ import hydra
 from glob import glob 
 FREEZE_DURATION = 2
 FPS = 20
+TD3 = True
+import pdb
 
 
 def _create_voxel_animation(voxel_grid, q, voxel_idx, steps=100):
@@ -47,6 +50,7 @@ def _create_voxel_animation(voxel_grid, q, voxel_idx, steps=100):
 
 def _clip_with_text(clip, text: str, duration: int = None):
     # If this fails, see: https://github.com/Zulko/moviepy/issues/693
+
     txt_clip = TextClip(text, fontsize=30, color='black')
     txt_clip = txt_clip.set_pos('bottom').set_duration(duration or clip.duration)
     return CompositeVideoClip([clip, txt_clip])
@@ -59,20 +63,21 @@ def _mix_clips(scene_frames: list, voxel_frames: list, large_voxel_windows: bool
     scene_clip = concatenate_videoclips([scene_freeze, scene_clip])
     scene_clip = _clip_with_text(scene_clip, 'Scene', duration=scene_clip.duration)
     clips = [scene_clip]
-    for i, f in enumerate(voxel_frames):
-        if white:
-            f = [np.ones_like(ff) + 255 for ff in f]
-        c = ImageSequenceClip(f, fps=FPS)
-        if not white:
-            c = _clip_with_text(c, 'Depth %d' % i + ' Eps %d'%episode + ' Step %d' % step + ' Reward %d' % reward )
-        img = c.to_ImageClip(c.duration-0.1).set_duration(5)
-        c = concatenate_videoclips([c, img]).subclip(0, scene_clip.duration)
-        clips.append(c)
+    if not TD3:
+        for i, f in enumerate(voxel_frames):
+            if white:
+                f = [np.ones_like(ff) + 255 for ff in f]
+            c = ImageSequenceClip(f, fps=FPS)
+            if not white:
+                c = _clip_with_text(c, 'Depth %d' % i + ' Eps %d'%episode + ' Step %d' % step + ' Reward %d' % reward )
+            img = c.to_ImageClip(c.duration-0.1).set_duration(5)
+            c = concatenate_videoclips([c, img]).subclip(0, scene_clip.duration)
+            clips.append(c)
 
-    if not large_voxel_windows:
-        ca = clips_array(
-            [[c.resize(1.0 / float(len(voxel_frames)))] for c in clips[1:]])
-        clips = [clips[0], ca]
+        if not large_voxel_windows:
+            ca = clips_array(
+                [[c.resize(1.0 / float(len(voxel_frames)))] for c in clips[1:]])
+            clips = [clips[0], ca]
 
     joined_clip = clips_array([clips])
     # joined_clip.preview()
@@ -121,11 +126,16 @@ def visualise(cfg: DictConfig):
         episode_length=loaded_cfg.rlbench.episode_length, headless=True)
     _ = env.observation_elements
 
-    
-    agent = c2farm.launch_utils.create_agent(loaded_cfg, env)
+    action_min_max = (-1 * np.ones(8), np.ones(8))
+    # agent = c2farm.launch_utils.create_agent(loaded_cfg, env)
+    agent = td3.launch_utils.create_agent(
+            cfg.rlbench.cameras[0], loaded_cfg.method.activation, action_min_max,
+            loaded_cfg.rlbench.camera_resolution, loaded_cfg.method.critic_lr,
+            loaded_cfg.method.actor_lr, loaded_cfg.method.critic_weight_decay,
+            loaded_cfg.method.actor_weight_decay, loaded_cfg.method.tau,
+            loaded_cfg.method.critic_grad_clip, loaded_cfg.method.actor_grad_clip,
+            env.low_dim_state_len)
     agent.build(training=False, device=torch.device("cpu"))
-
- 
     agent.load_weights(resume_dir)
     logging.info('Launching env with task(s): {}'.format(cfg.tasks))
     
@@ -185,21 +195,21 @@ def visualise(cfg: DictConfig):
                 logging.info('Episode step: %d. Mixing clips ' % step) 
                 voxel_depths = []
                 d = 0
-                while True:
-                    if 'voxel_grid_depth%d' % d not in act_result.info:
-                        break
-                    # logging.info('Episode step: %d. Creating voxel animation '
-                    #              'for depth: %d' % (step, d))
-                    voxel_depths.append(_create_voxel_animation(
-                        act_result.info['voxel_grid_depth%d' % d].numpy()[0],
-                        act_result.info['q_depth%d' % d].numpy()[0],
-                        act_result.info['voxel_idx_depth%d' % d].numpy()[0],
-                    ))
-                    d += 1
+                if not TD3:
+                    while True:
+                        if 'voxel_grid_depth%d' % d not in act_result.info:
+                            break
+                        # logging.info('Episode step: %d. Creating voxel animation '
+                        #              'for depth: %d' % (step, d))
+                        voxel_depths.append(_create_voxel_animation(
+                            act_result.info['voxel_grid_depth%d' % d].numpy()[0],
+                            act_result.info['q_depth%d' % d].numpy()[0],
+                            act_result.info['voxel_idx_depth%d' % d].numpy()[0],
+                        ))
+                        d += 1
 
                 # if transition.terminal:
                 #     last = True 
-                    
                 clips.append(_mix_clips(trajectory_frames[num_past_frame:], 
                     voxel_depths, white=last, step=step, reward=transition.reward, episode=ep))
 
@@ -216,7 +226,7 @@ def visualise(cfg: DictConfig):
                 obs_history[k].append(transition.observation[k])
                 obs_history[k].pop(0)
     avg_r = np.mean(avg_rewards)
-    _save_clips(clips, '/home/mandi/ARM/{}_rew{}_episode{}_c2f_qattention_{}'.format(cfg.vid_name, avg_r, len(avg_rewards), task))
+    _save_clips(clips, '/shared/ademi_adeniji/ARM/{}_rew{}_episode{}_td3_qattention_{}'.format(cfg.vid_name, avg_r, len(avg_rewards), task))
 
     print('Shutting down env...')
     env.shutdown()

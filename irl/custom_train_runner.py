@@ -437,8 +437,10 @@ class PyTorchTrainRunner(TrainRunner):
                 time.sleep(1)  
                 transition_wait += 1
                 if transition_wait % TRAN_WAIT_WARN == 0:
+                    logging.info('Need %d samples before training. Currently have %s in each buffer, which adds to %d in total, setting init_replay_size to: %s' %
+                    (self._transitions_before_train, str(self._get_add_counts()), self._get_sum_add_counts(), init_replay_size))
                     logging.info('Waiting for %d total samples before training. Currently have %s, min number of samples in buffer: %s' %
-                    (self._transitions_before_train, self._get_sum_add_counts(), self._get_min_add_counts()) )
+                    (self._transitions_before_train, self._get_sum_add_counts(), self._get_min_add_counts()))
                     # print([r.replay_buffer.add_count for r in self._wrapped_buffer])
                 evaled_steps = self._env_runner._total_transitions['eval_envs']
                 approx_step = evaled_steps - evaled_steps % self._log_freq
@@ -592,8 +594,9 @@ class PyTorchTrainRunner(TrainRunner):
                     process.cpu_percent(interval=None) / num_cpu) 
             
             self._writer.end_iteration()
- 
+            
             if (i % self._save_freq == 0 or i == self._iterations-1) and self._weightsdir is not None and not self._eval_only:
+                logging.info(f"saving model at iteration {i}")
                 self._save_model(i)
         
             if self._env_runner._iter_eval and self._writer is not None:

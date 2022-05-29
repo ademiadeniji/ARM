@@ -48,11 +48,12 @@ class CustomMultiTaskRLBenchEnv(MultiTaskRLBenchEnv):
                  reward_scale: int = 100,
                  num_video_limit: int = 3, # don't log too many videos of the same reward
                  use_variations: list = [],
+                 shaped_rewards = False,
                  ):
         super(CustomMultiTaskRLBenchEnv, self).__init__(
             task_classes, task_names, 
             observation_config, action_mode,
-            dataset_root, channels_last, headless, swap_task_every, use_variations)
+            dataset_root, channels_last, headless, swap_task_every, use_variations, shaped_rewards)
         self._reward_scale = reward_scale
         self._episode_index = 0
         self._record_current_episode = False  

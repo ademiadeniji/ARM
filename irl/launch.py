@@ -361,7 +361,7 @@ def main(cfg: DictConfig) -> None:
         action_mode=ACTION_MODE, dataset_root=cfg.rlbench.demo_path,
         episode_length=cfg.rlbench.episode_length, headless=True, 
         use_variations=variation_idxs, # the tasks may have different num of variations, deal w that later 
-        )
+        shaped_rewards=cfg.rew.shaped_rewards)
     print('Done creating custom env')
     
     all_tasks = []

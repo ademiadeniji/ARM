@@ -1,14 +1,14 @@
 # tasks: ['pick_up_cup'] # ['pick_up_cup', 'pick_and_lift', 'push_button', 'reach_target', 'take_lid_off_saucepan']
-10_tasks:  [pick_up_cup,phone_on_base,pick_and_lift,put_rubbish_in_bin,push_button,reach_target,lamp_on,take_lid_off_saucepan,take_umbrella_out_of_umbrella_stand,stack_wine]
+10_tasks:  [take_lid_off_saucepan,pick_and_lift,push_button,reach_target,pick_up_cup,phone_on_base,lamp_on,put_umbrella_in_umbrella_stand,put_rubbish_in_bin,stack_wine]
 run_name: burn  
 log_path: ??? 
 tasks_name: ???
 
 method: ??? 
 tasks:
-  all_tasks: [push_button]
+  all_tasks: [take_lid_off_saucepan,pick_and_lift,push_button,reach_target,pick_up_cup,phone_on_base,lamp_on,put_umbrella_in_umbrella_stand,put_rubbish_in_bin,stack_wine] 
   cameras: [front]
-  num_vars: -1 
+  num_vars: -1
   heldout: ''
   demo_length: 1 
   train_steps: 10000
@@ -49,8 +49,8 @@ replay:
 framework:
     log_freq:  ${tasks.log_freq} # set to bigger to not save so many media files 
     save_freq: 100
-    train_envs: 1
-    eval_envs: 2
+    train_envs: 2
+    eval_envs: 0
     env_runner_gpu: 1
     replay_ratio: 30
     transitions_before_train: 100
@@ -75,7 +75,8 @@ framework:
     
 rew:
   task_reward: False
-  use_r3m: False 
+  shaped_rewards: False
+  use_r3m: True 
   r3m_path: /shared/ademi_adeniji/r3m/r3m/r3moutput/train_representation/2022-05-09_19-53-49/snapshot_50000.pt
   data_path: '/home/mandi/ARM/irl/CLIP_ARM/'
   model_path: /home/mandi/ARM/irl/clip-tuned/  
@@ -95,8 +96,8 @@ rew:
 
 resume: False
 resume_path: '/shared/ademi_adeniji/ARM/irl/log/' # or: /shared/mandi/irl_arm_log 
-resume_run: ''
-resume_step: 24300
+resume_run: '10Task-84var/td3_10task_pretrain-Replay_B60x6/seed0'
+resume_step: 0
 resume_freeze: []
 
 dev:

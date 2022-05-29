@@ -114,7 +114,7 @@ class CustomRolloutGenerator(object):
         variation_id = env._active_variation_id
         task_name = env._active_task_name
         buf_id = self._task_var_to_replay_idx[task_id][variation_id]
-        #print('mt rollout gen:', task_id, variation_id, task_name)
+        print('mt rollout gen:', task_id, variation_id, task_name)
         agent.reset()
         checkpoint = agent.get_checkpoint()
         obs_history = {k: [np.array(v, dtype=self._get_type(v))] * timesteps for k, v in obs.items()}
